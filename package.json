@@ -1,0 +1,62 @@
+{
+  "name": "dsh-plugin-legion",
+  "version": "0.1.0",
+  "description": "Connect DeepSeek Harness to your own Legion service: durable delegation, progress, recovery and artifacts.",
+  "type": "module",
+  "main": "index.js",
+  "exports": {
+    ".": "./index.js",
+    "./client": "./lib/client.js"
+  },
+  "files": [
+    "index.js",
+    "lib/",
+    "cordis.patch.yml",
+    "README.md",
+    "README.zh-CN.md",
+    "LICENSE",
+    "docs/PLAN.md",
+    "docs/PROTOCOL.md",
+    "docs/SECURITY.md",
+    "docs/MARKET.md"
+  ],
+  "scripts": {
+    "test": "node --test test/*.test.js",
+    "check": "node --check index.js && node --check lib/client.js && node --check lib/store.js && node --check lib/sse.js && node --check lib/commands.js && node --check lib/json.js"
+  },
+  "engines": {
+    "node": ">=24.9.0",
+    "dsh": "0.2.1-rc.2"
+  },
+  "peerDependencies": {
+    "@deepseek-ai/dsh-tools": "0.2.1-rc.2",
+    "@deepseek-ai/schemastery": "~3.18.5"
+  },
+  "devDependencies": {
+    "@deepseek-ai/dsh": "0.2.1-rc.2",
+    "@deepseek-ai/dsh-tools": "0.2.1-rc.2",
+    "@deepseek-ai/schemastery": "~3.18.5"
+  },
+  "dsh": {
+    "bundle": {
+      "patch": "./cordis.patch.yml"
+    }
+  },
+  "license": "MIT",
+  "author": "seanliii",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/seanliii/dsh-plugin-legion.git"
+  },
+  "bugs": {
+    "url": "https://github.com/seanliii/dsh-plugin-legion/issues"
+  },
+  "homepage": "https://github.com/seanliii/dsh-plugin-legion#readme",
+  "keywords": [
+    "dsh-plugin",
+    "deepseek-harness",
+    "legion",
+    "multi-agent",
+    "delegation"
+  ]
+}

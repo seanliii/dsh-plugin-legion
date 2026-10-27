@@ -1,0 +1,154 @@
+import { isAbsolute } from 'node:path'
+import Schema from '@deepseek-ai/schemastery'
+import { defineTool } from '@deepseek-ai/dsh-tools'
+import { LegionClient, validateCandidateHarnesses } from './lib/client.js'
+import { executeLegionCommand, executionFrom } from './lib/commands.js'
+
+export const name = 'legion'
+export const inject = ['tools']
+
+function validateBaseUrl(value) {
+  let url
+  try { url = new URL(value) } catch { throw new Error('Legion baseUrl must be a valid HTTP(S) URL') }
+  const loopback = ['localhost', '127.0.0.1', '[::1]'].includes(url.hostname)
+  if (url.protocol !== 'https:' && !(url.protocol === 'http:' && loopback)) {
+    throw new Error('Legion baseUrl requires HTTPS; HTTP is allowed only on loopback')
+  }
+  if (url.username || url.password || url.search || url.hash) {
+    throw new Error('Legion baseUrl must not contain credentials, a query or a fragment')
+  }
+  return value
+}
+
+const fields = {
+  baseUrl: Schema.transform(Schema.string(), validateBaseUrl, true)
+    .description('Legion 服务地址；省略时使用 LEGION_BASE_URL，未设置时使用 http://127.0.0.1:8000。'),
+  candidateHarnesses: Schema.transform(Schema.array(Schema.string()), validateCandidateHarnesses, true)
+    .description('可选的用户指定成员候选，按原顺序传给服务；省略或空列表不发送 plan。不由模型参数提供，不增加权限或兜底。'),
+  tokenEnv: Schema.string().pattern(/^[A-Za-z_][A-Za-z0-9_]*$/).default('LEGION_PERSONAL_TOKEN')
+    .description('保存个人令牌的环境变量名；不填写令牌本身。'),
+  stateDirectory: Schema.string().pattern(/\S/).description('本机任务恢复索引目录（可选）。'),
+  requestTimeoutMs: Schema.natural().min(100).max(300000).default(30000)
+    .description('单次 HTTP 等待上限，单位毫秒；超时不取消远端任务。'),
+  maxResponseBytes: Schema.natural().min(1024).max(32 * 1024 * 1024).default(4 * 1024 * 1024)
+    .description('单次响应的字节上限。'),
+  maxArtifactBytes: Schema.natural().min(1).max(1024 * 1024 * 1024).default(50 * 1024 * 1024)
+    .description('单个下载文件的字节上限。'),
+  maxEvents: Schema.natural().min(1).max(500).default(100)
+    .description('每次状态查询返回的事件数量上限。'),
+  projectBindingFile: Schema.transform(Schema.string(), value => {
+    if (!isAbsolute(value) || value.includes('\0')) {
+      throw new Error('projectBindingFile must be an absolute user-configured file path')
+    }
+    return value
+  }, true).description('用户配置的项目授权绑定文件路径；不由模型参数提供。'),
+}
+
+// Schemastery object schemas preserve unknown keys by default. Check raw keys
+// before normalization so credentials and lifecycleSignal cannot enter config.
+const knownFields = Schema.transform(Schema.any(), value => {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) {
+    throw new Error('Legion configuration must be an object')
+  }
+  if (Reflect.ownKeys(value).some(key => !Object.hasOwn(fields, key))) {
+    throw new Error('Unknown Legion configuration field; use tokenEnv, never an inline token or lifecycleSignal')
+  }
+  // Validate before Schemastery can normalize an explicit null to "omitted".
+  if (Object.hasOwn(value, 'candidateHarnesses')) validateCandidateHarnesses(value.candidateHarnesses)
+  return {}
+}, true).hidden()
+
+export const Config = Schema.intersect([knownFields, Schema.object(fields)]).default({})
+
+const text = description => ({ type: 'string', required: true, description })
+const taskRef = text('当前 DSH 会话中已有的 task_ref，来自 legion_submit 或 legion_list；必须明确指定。')
+const operationKey = text('本次操作的稳定去重键；查询或重试同一操作时保留原键。')
+const tools = [
+  {
+    method: 'submit',
+    description: '向军团提交任务并返回可恢复的引用；同一 key 不重复派单。previous_task_ref 在同一军团会话开启新轮次。',
+    parameters: {
+      key: text('本次任务的稳定去重键。'),
+      query: text('原始任务或新轮次反馈。'),
+      context: { type: 'string', description: '调用方明确提供的补充背景，不是权限或系统指令。' },
+      previous_task_ref: { type: 'string', description: '可选：同会话上一轮的任务引用；不是恢复中断。' },
+    },
+  },
+  {
+    method: 'list',
+    description: '列出当前 DSH 会话的本地任务恢复索引；不是实时进度查询。',
+    parameters: {},
+  },
+  {
+    method: 'status',
+    description: '查询原任务状态、进度事件与导出记录，不重新派单。done 不等于已导出或已验收。',
+    parameters: {
+      task_ref: taskRef,
+      after_event_id: { type: 'integer', description: '只读取此事件序号之后的进度；省略时从 0 开始。' },
+    },
+  },
+  {
+    method: 'message',
+    description: '向原任务指定收件人发送消息；回执只证明进入邮箱，不证明已读或已处理，不自动恢复任务。',
+    parameters: {
+      task_ref: taskRef, operation_key: operationKey,
+      recipient: text('明确的收件人任务 id。'), text: text('消息或反馈原文。'),
+    },
+  },
+  {
+    method: 'resume',
+    description: '请求恢复原任务的中断执行；不创建新轮次。新轮次请用 legion_submit 的 previous_task_ref。',
+    parameters: { task_ref: taskRef, operation_key: operationKey },
+  },
+  {
+    method: 'cancel',
+    description: '请求取消明确的远端任务；收到请求回执不等于任务或进程已经停止。',
+    parameters: { task_ref: taskRef, reason: { type: 'string', description: '用户给出的取消原因（可选）。' } },
+  },
+  {
+    method: 'download',
+    description: '下载 legion_status 列出的可下载导出文件并核对字节与 SHA-256；下载不是作品验收。',
+    parameters: { task_ref: taskRef, artifact_id: text('legion_status 返回的 artifact_id；不是任意 URL 或路径。') },
+  },
+]
+
+export function apply(ctx, config) {
+  const lifecycle = new AbortController()
+  const client = new LegionClient({ ...config, lifecycleSignal: lifecycle.signal })
+  ctx.effect(() => () => {
+    lifecycle.abort(new DOMException('Legion plugin unloaded; remote tasks were not cancelled', 'AbortError'))
+    return client.dispose()
+  }, 'legion HTTP lifetime')
+
+  for (const { method, description, parameters } of tools) {
+    ctx.tools.register(defineTool({
+      name: `legion_${method}`,
+      description,
+      parameters,
+      output: {
+        schema: { type: 'object', additionalProperties: true },
+        render: (_args, value) => [{ type: 'text', text: JSON.stringify(value) }],
+      },
+      async execute(args, exec) {
+        const execution = executionFrom(exec)
+        // defineTool has an open parameter root. Never pass undeclared authority
+        // fields, even when a caller includes them in an otherwise valid call.
+        const input = Object.fromEntries(Object.keys(parameters)
+          .filter(key => Object.hasOwn(args, key))
+          .map(key => [key, args[key]]))
+        return method === 'list' ? client.list(execution) : client[method](input, execution)
+      },
+    }))
+  }
+
+  // CLI/Web adapters may provide commands; headless hosts need only the tools.
+  // Own registration through the injected child, so service replacement cleans up.
+  ctx.inject(['commands'], commandCtx => {
+    commandCtx.commands.register({
+      name: 'legion',
+      description: '提交或跟进军团任务，查询进度、发送消息、恢复、取消与下载。',
+      input: { hint: 'help | start | list | status | message | resume | cancel | download | continue' },
+      handler: invocation => executeLegionCommand(client, invocation),
+    })
+  })
+}
