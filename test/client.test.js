@@ -377,3 +377,249 @@ test('missing credentials do not burn a key or perform any network request', asy
   env.FIXTURE_TOKEN = 'fixture-token'
   assert.equal((await client.submit(args, execution())).submission, 'accepted')
 })
+
+// Match team_state.send_message's real envelope, not a stub of client.status.
+const commanderMessage = (id, overrides = {}) => ({
+  id, from: 'author', to: 'commander', text: 'Please call marked_extract_tokens with {"markdown":"# Hi"}.',
+  artifact_refs: [], ts: 1793110000 + id, read_at: null, ...overrides,
+})
+
+test('commander mailbox: status restores requests and original read facts without marking or consuming them', async t => {
+  const { client, server, config, env, LegionClient } = await setup(t)
+  const start = await client.submit({ key: 'mailbox', query: 'Use local capabilities when requested' }, execution())
+  const team = server.teams.get(start.team_id)
+  const withoutReadFact = commanderMessage(9)
+  delete withoutReadFact.read_at
+  team.mailboxes = {
+    commander: [commanderMessage(2), commanderMessage(5, { read_at: 1793110010.5 }), withoutReadFact],
+    author: [commanderMessage(6, { to: 'author', text: 'OTHER_RECIPIENT_PRIVATE_BODY' })],
+  }
+  const before = structuredClone(team.mailboxes)
+  const restarted = new LegionClient(config, env)
+  for (const reader of [client, restarted]) {
+    const result = await reader.status({ task_ref: start.task_ref, after_event_id: 100 }, execution())
+    assert.deepEqual(result.mailbox?.messages?.map(({ id, from, to, text, ts, read_at }) =>
+      ({ id, from, to, text, ts, ...(read_at === undefined ? {} : { read_at }) })), [
+      { id: 2, from: 'author', to: 'commander', text: before.commander[0].text, ts: 1793110002, read_at: null },
+      { id: 5, from: 'author', to: 'commander', text: before.commander[1].text, ts: 1793110005, read_at: 1793110010.5 },
+      { id: 9, from: 'author', to: 'commander', text: before.commander[2].text, ts: 1793110009 },
+    ], 'Legitimate commander requests must not disappear from status')
+    assert.equal(result.mailbox.state, 'available')
+    assert.equal(result.mailbox.source, 'team.mailboxes.commander')
+    assert.equal(result.mailbox.trust, 'untrusted_source')
+    assert.equal(result.mailbox.read_receipts_modified, false)
+    assert.equal(result.mailbox.model_consumption, 'not_observed')
+    assert.equal(Object.hasOwn(result.mailbox.messages[2], 'read_at'), false)
+    assert.equal(result.runtime.tasks[0].task_id, 'author')
+    assert.equal(result.events.length, 0, 'Mailbox IDs are independent of the replay cursor')
+    assert.equal(JSON.stringify(result).includes('OTHER_RECIPIENT_PRIVATE_BODY'), false)
+  }
+  assert.deepEqual(team.mailboxes, before)
+  assert.deepEqual(server.requests.slice(1).map(({ method, path }) => `${method} ${path}`), [
+    'GET /api/legion/team', 'GET /api/legion/events',
+    'GET /api/legion/team', 'GET /api/legion/events',
+  ], 'Observation must not call mark-read, message, resume, or dispatch endpoints')
+})
+
+test('commander mailbox: envelope and reference projection preserves text redaction and truncation facts', async t => {
+  const { client, server } = await setup(t)
+  const start = await client.submit({ key: 'mailbox-redaction', query: 'Work' }, execution())
+  server.teams.get(start.team_id).mailboxes = { commander: [commanderMessage(1, {
+    text: `Bearer fixture-token https://public.example/file?token=PRIVATE_URL_TOKEN ${'x'.repeat(17000)}`,
+    authorization: 'PRIVATE_AUTHORIZATION',
+    reasoning_content: 'PRIVATE_REASONING',
+    attachments: [{ data: 'PRIVATE_BINARY' }],
+    artifact_refs: [{
+      artifact_id: 'a'.repeat(64), sha256: 'b'.repeat(64), name: 'result.txt', mime: 'text/plain', bytes: 42,
+      path: '/private/service/artifact.txt', data: 'PRIVATE_REFERENCE_BINARY', token: 'PRIVATE_REFERENCE_TOKEN',
+    }],
+  })] }
+  const result = await client.status({ task_ref: start.task_ref }, execution())
+  assert.ok(result.mailbox?.messages, 'Status must expose the sanitized mailbox')
+  const message = result.mailbox.messages[0]
+  assert.match(message.text, /Bearer \[redacted\]/)
+  assert.match(message.text, /\?token=\[redacted\]/)
+  assert.match(message.text, /\[truncated; original \d+ characters\]/)
+  assert.equal(message.text_source, 'inline')
+  assert.equal(message.text_truncated, true)
+  assert.equal(result.mailbox.truncated, true)
+  assert.deepEqual(message.artifact_refs, [{
+    artifact_id: 'a'.repeat(64), sha256: 'b'.repeat(64), name: 'result.txt', mime: 'text/plain', bytes: 42,
+  }])
+  assert.ok(result.projection.truncated_fields.includes('$.mailbox.messages[0].text'))
+  for (const path of ['authorization', 'reasoning_content', 'attachments', 'artifact_refs[0].path', 'artifact_refs[0].data', 'artifact_refs[0].token']) {
+    assert.ok(result.projection.omitted_fields.includes(`$.mailbox.messages[0].${path}`), path)
+  }
+  for (const secret of ['fixture-token', 'PRIVATE_URL_TOKEN', 'PRIVATE_AUTHORIZATION', 'PRIVATE_REASONING',
+    'PRIVATE_BINARY', '/private/service/artifact.txt', 'PRIVATE_REFERENCE_BINARY', 'PRIVATE_REFERENCE_TOKEN']) {
+    assert.equal(JSON.stringify(result).includes(secret), false)
+  }
+})
+
+test('commander mailbox: referenced long text remains an explicit preview and private references are not fetched', async t => {
+  const { client, server, config, env, LegionClient } = await setup(t)
+  const start = await client.submit({ key: 'mailbox-preview', query: 'Work' }, execution())
+  server.teams.get(start.team_id).mailboxes = { commander: [commanderMessage(7, {
+    text: 'The service only returned the beginning of a longer capability request.',
+    artifact_refs: [
+      { name: 'a.txt', path: '/private/a.txt' },
+      { name: 'b.txt', path: '/private/b.txt' },
+      { name: 'mail-7.txt', sha256: 'c'.repeat(64), bytes: 9000, path: '/private/body.txt' },
+    ],
+  })] }
+  const limited = new LegionClient({ ...config, maxEvents: 2 }, env)
+  const result = await limited.status({ task_ref: start.task_ref }, execution())
+  assert.ok(result.mailbox?.messages)
+  const message = result.mailbox.messages[0]
+  assert.equal(message.text_source, 'inline_preview')
+  assert.equal(message.text_truncated, true)
+  assert.equal(message.artifact_refs.length, 2)
+  assert.equal(message.artifact_refs_truncated, true)
+  assert.equal(result.mailbox.truncated, true)
+  assert.equal(result.mailbox.more_messages, false, 'A truncated body is not another mailbox page')
+  assert.ok(result.projection.truncated_fields.includes('$.mailbox.messages[0].text'))
+  assert.ok(result.projection.truncated_fields.includes('$.mailbox.messages[0].artifact_refs'))
+  assert.deepEqual(server.requests.slice(1).map(x => x.path), ['/api/legion/team', '/api/legion/events'])
+  assert.equal(JSON.stringify(result).includes('/private/'), false)
+})
+
+test('commander mailbox: bounded pages use an independent explicit cursor and never implicitly consume earlier requests', async t => {
+  const { client, server, config, env, LegionClient } = await setup(t)
+  const start = await client.submit({ key: 'mailbox-pages', query: 'Work' }, execution())
+  server.teams.get(start.team_id).mailboxes = { commander: [commanderMessage(8), commanderMessage(2), commanderMessage(5)] }
+  const limited = new LegionClient({ ...config, maxEvents: 2 }, env)
+  const first = await limited.status({ task_ref: start.task_ref, after_event_id: 100 }, execution())
+  assert.deepEqual(first.mailbox?.messages?.map(x => x.id), [2, 5])
+  assert.equal(first.mailbox.after_message_id, 0)
+  assert.equal(first.mailbox.next_message_id, 5)
+  assert.equal(first.mailbox.total_messages, 3)
+  assert.equal(first.mailbox.more_messages, true)
+  assert.equal(first.mailbox.truncated, true)
+  assert.ok(first.projection.truncated_fields.includes('$.mailbox.messages'))
+  const next = await limited.status({ task_ref: start.task_ref, after_message_id: 5 }, execution())
+  assert.deepEqual(next.mailbox.messages.map(x => x.id), [8])
+  assert.equal(next.mailbox.next_message_id, 8)
+  assert.equal(next.mailbox.more_messages, false)
+  assert.equal(next.mailbox.truncated, false)
+  assert.deepEqual(next.events.map(x => x.event_id), [1], 'The message cursor must not filter events')
+  const again = await limited.status({ task_ref: start.task_ref }, execution())
+  assert.deepEqual(again.mailbox.messages.map(x => x.id), [2, 5], 'Display is not an acknowledgement')
+  const end = await limited.status({ task_ref: start.task_ref, after_message_id: 20 }, execution())
+  assert.deepEqual(end.mailbox.messages, [])
+  assert.equal(end.mailbox.next_message_id, 20)
+  assert.equal(end.mailbox.more_messages, false)
+})
+
+test('commander mailbox: metadata truncation is reflected in the mailbox truncation flag', async t => {
+  const { client, server } = await setup(t)
+  const start = await client.submit({ key: 'mailbox-metadata', query: 'Work' }, execution())
+  server.teams.get(start.team_id).mailboxes = { commander: [commanderMessage(1, {
+    from: 'a'.repeat(17000), artifact_refs: [{ name: 'b'.repeat(17000) }],
+  })] }
+  const result = await client.status({ task_ref: start.task_ref }, execution())
+  assert.equal(result.mailbox.truncated, true, 'Metadata clipping must not claim an untruncated mailbox')
+  assert.equal(result.mailbox.messages[0].text_truncated, false)
+  assert.ok(result.projection.truncated_fields.includes('$.mailbox.messages[0].from'))
+  assert.ok(result.projection.truncated_fields.includes('$.mailbox.messages[0].artifact_refs[0].name'))
+})
+
+test('commander mailbox: missing or malformed containers are distinct from an observed empty mailbox', async t => {
+  const { client, server } = await setup(t)
+  const start = await client.submit({ key: 'mailbox-shapes', query: 'Work' }, execution())
+  const team = server.teams.get(start.team_id)
+  for (const [name, mailboxes, state] of [
+    ['missing mailboxes', undefined, 'not_returned'],
+    ['missing commander', {}, 'not_returned'],
+    ['null mailboxes', null, 'invalid'],
+    ['array mailboxes', [], 'invalid'],
+    ['string mailboxes', 'PRIVATE_MALFORMED_BODY', 'invalid'],
+    ['null commander', { commander: null }, 'invalid'],
+    ['object commander', { commander: {} }, 'invalid'],
+  ]) {
+    await t.test(name, async () => {
+      team.mailboxes = mailboxes
+      const result = await client.status({ task_ref: start.task_ref }, execution())
+      assert.equal(result.mailbox?.state, state)
+      assert.equal(result.mailbox.messages, null)
+      assert.equal(result.mailbox.total_messages, null)
+      assert.equal(result.mailbox.more_messages, null)
+      assert.equal(result.mailbox.next_message_id, null)
+      assert.ok(result.mailbox.diagnostic.code)
+      assert.equal(result.runtime.tasks[0].status, 'running')
+      assert.equal(JSON.stringify(result).includes('PRIVATE_MALFORMED_BODY'), false)
+    })
+  }
+  team.mailboxes = { commander: [] }
+  const empty = await client.status({ task_ref: start.task_ref }, execution())
+  assert.equal(empty.mailbox.state, 'available')
+  assert.deepEqual(empty.mailbox.messages, [])
+  assert.equal(empty.mailbox.total_messages, 0)
+  assert.equal(empty.mailbox.more_messages, false)
+  assert.equal(empty.mailbox.next_message_id, 0)
+  assert.equal(empty.mailbox.truncated, false)
+})
+
+test('commander mailbox: malformed or ambiguous envelopes are reported rather than treated as no requests', async t => {
+  const { client, server } = await setup(t)
+  const start = await client.submit({ key: 'mailbox-envelopes', query: 'Work' }, execution())
+  const cases = [
+    ['null envelope', [null]],
+    ['invalid id', [commanderMessage('1')]],
+    ['missing sender', [commanderMessage(1, { from: undefined })]],
+    ['wrong recipient', [commanderMessage(1, { to: 'other-task' })]],
+    ['binary body', [commanderMessage(1, { text: { type: 'Buffer', data: [80, 82, 73, 86, 65, 84, 69] } })]],
+    ['invalid timestamp', [commanderMessage(1, { ts: 'PRIVATE_TIMESTAMP' })]],
+    ['invalid read fact', [commanderMessage(1, { read_at: false })]],
+    ['invalid references', [commanderMessage(1, { artifact_refs: {} })]],
+    ['invalid reference entry', [commanderMessage(1, { artifact_refs: [null] })]],
+    ['invalid reference metadata', [commanderMessage(1, { artifact_refs: [{ name: { private: 'PRIVATE_METADATA' } }] })]],
+    ['duplicate message id', [commanderMessage(1), commanderMessage(1, { from: 'reviewer' })]],
+  ]
+  for (const [name, messages] of cases) {
+    await t.test(name, async () => {
+      server.teams.get(start.team_id).mailboxes = { commander: messages }
+      const result = await client.status({ task_ref: start.task_ref }, execution())
+      assert.equal(result.mailbox?.state, 'invalid')
+      assert.equal(result.mailbox.messages, null)
+      assert.equal(result.mailbox.total_messages, messages.length)
+      assert.equal(result.mailbox.more_messages, null)
+      assert.equal(result.mailbox.next_message_id, null)
+      assert.equal(result.mailbox.diagnostic.code, 'INVALID_MAILBOX')
+      assert.match(result.mailbox.diagnostic.path, /^\$\.mailbox\.messages\[/)
+      assert.equal(JSON.stringify(result).includes('PRIVATE_TIMESTAMP'), false)
+      assert.equal(JSON.stringify(result).includes('PRIVATE_METADATA'), false)
+      assert.equal(result.runtime.tasks[0].status, 'running')
+    })
+  }
+})
+
+test('commander mailbox: invalid message cursors fail before requesting remote state', async t => {
+  const { client, server } = await setup(t)
+  const start = await client.submit({ key: 'mailbox-cursor', query: 'Work' }, execution())
+  for (const after_message_id of [-1, 0.5, '1', Number.MAX_SAFE_INTEGER + 1]) {
+    await assert.rejects(client.status({ task_ref: start.task_ref, after_message_id }, execution()), /after_message_id/)
+  }
+  assert.equal(server.requests.length, 1)
+})
+
+test('commander mailbox: session and team identity, cancellation, and response byte limits still guard the snapshot', async t => {
+  const { client, server, config, env, LegionClient } = await setup(t)
+  const start = await client.submit({ key: 'mailbox-boundaries', query: 'Work' }, execution())
+  const team = server.teams.get(start.team_id)
+  team.mailboxes = { commander: [commanderMessage(1)] }
+  await assert.rejects(client.status({ task_ref: start.task_ref }, { ...execution(), sessionId: 'different-dsh-session' }), /session|unknown|not found/i)
+  const controller = new AbortController()
+  controller.abort()
+  await assert.rejects(client.status({ task_ref: start.task_ref }, { ...execution(), signal: controller.signal }), { name: 'AbortError' })
+  assert.equal(server.requests.length, 1)
+  for (const field of ['team_id', 'conversation_id']) {
+    const original = team[field]
+    team[field] = 'PRIVATE_FOREIGN_IDENTITY'
+    await assert.rejects(client.status({ task_ref: start.task_ref }, execution()), /different .* identity/)
+    team[field] = original
+  }
+  assert.deepEqual(server.requests.slice(1).map(x => x.path), ['/api/legion/team', '/api/legion/team'])
+  team.mailboxes.commander[0].text = 'x'.repeat(10000)
+  const limited = new LegionClient({ ...config, maxResponseBytes: 1024 }, env)
+  await assert.rejects(limited.status({ task_ref: start.task_ref }, execution()), /byte limit/i)
+})

@@ -1,16 +1,20 @@
 {
   "name": "dsh-plugin-legion",
-  "version": "0.1.0",
-  "description": "Connect DeepSeek Harness to your own Legion service: durable delegation, progress, recovery and artifacts.",
+  "version": "0.2.0",
+  "description": "Bring open-source capabilities into DeepSeek Harness and collaborate with your own Legion service.",
   "type": "module",
   "main": "index.js",
   "exports": {
     ".": "./index.js",
-    "./client": "./lib/client.js"
+    "./client": "./lib/client.js",
+    "./locale/*.json": "./locale/*.json",
+    "./icon": "./icon.svg"
   },
   "files": [
     "index.js",
     "lib/",
+    "locale/",
+    "icon.svg",
     "cordis.patch.yml",
     "README.md",
     "README.zh-CN.md",
@@ -18,22 +22,25 @@
     "docs/PLAN.md",
     "docs/PROTOCOL.md",
     "docs/SECURITY.md",
-    "docs/MARKET.md"
+    "docs/MARKET.md",
+    "docs/ECOSYSTEM.md"
   ],
   "scripts": {
     "test": "node --test test/*.test.js",
-    "check": "node --check index.js && node --check lib/client.js && node --check lib/store.js && node --check lib/sse.js && node --check lib/commands.js && node --check lib/json.js"
+    "check": "node --check index.js && node --check lib/client.js && node --check lib/store.js && node --check lib/sse.js && node --check lib/commands.js && node --check lib/json.js && node --check lib/redaction.js && node --check lib/ecosystem.js && node --check lib/extension.js && node --check lib/sources.js && node --check lib/bundles.js && node --check lib/bridge.js"
   },
   "engines": {
     "node": ">=24.9.0",
     "dsh": "0.2.1-rc.2"
   },
   "peerDependencies": {
+    "@deepseek-ai/dsh-llm": "0.2.1-rc.2",
     "@deepseek-ai/dsh-tools": "0.2.1-rc.2",
     "@deepseek-ai/schemastery": "~3.18.5"
   },
   "devDependencies": {
     "@deepseek-ai/dsh": "0.2.1-rc.2",
+    "@deepseek-ai/dsh-llm": "0.2.1-rc.2",
     "@deepseek-ai/dsh-tools": "0.2.1-rc.2",
     "@deepseek-ai/schemastery": "~3.18.5"
   },
@@ -57,6 +64,8 @@
     "deepseek-harness",
     "legion",
     "multi-agent",
-    "delegation"
+    "delegation",
+    "plugin-ecosystem",
+    "open-source"
   ]
 }

@@ -5,12 +5,14 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { Context } from '@deepseek-ai/cordis'
 import { SystemPrompt } from '@deepseek-ai/dsh-system-prompt'
-import { ToolRuntime, assertSupportedJsonSchema, validateJsonSchemaValue } from '@deepseek-ai/dsh-tools'
+import { ToolRuntime, defineTool, assertSupportedJsonSchema, validateJsonSchemaValue } from '@deepseek-ai/dsh-tools'
 import { CommandRuntime } from '@deepseek-ai/dsh-commands'
 import { LegionClient } from '../lib/client.js'
+import { GitHubSources } from '../lib/sources.js'
+import { SkillRegistry } from '@deepseek-ai/dsh-skill'
 
 const methods = ['submit', 'list', 'status', 'message', 'resume', 'cancel', 'download']
-const names = methods.map(method => `legion_${method}`).sort()
+const names = [...methods, 'discover', 'source', 'bundle', 'call'].map(method => `legion_${method}`).sort()
 const taskRef = 'a'.repeat(32)
 const artifactId = 'b'.repeat(32)
 const isolatedConfig = {
@@ -139,7 +141,7 @@ test('official defineTool definitions route all seven calls with exact current a
   const inputs = {
     submit: { key: 'new-turn', query: '保留原目标', context: '公开背景', previous_task_ref: taskRef },
     list: {},
-    status: { task_ref: taskRef, after_event_id: 0 },
+    status: { task_ref: taskRef, after_event_id: 0, after_message_id: 7 },
     message: { task_ref: taskRef, operation_key: 'note-1', recipient: 'author', text: '新反馈' },
     resume: { task_ref: taskRef, operation_key: 'resume-1' },
     cancel: { task_ref: taskRef, reason: '用户请求取消' },
@@ -180,6 +182,9 @@ test('tool schemas validate input and undeclared fields never reach the client',
   await assert.rejects(submit.execute({ key: 'missing-query' }, exec))
   await assert.rejects(submit.execute({ key: 'k', query: 10 }, exec))
   await assert.rejects(ctx.tools.get('legion_status').execute({ task_ref: taskRef, after_event_id: 1.5 }, exec))
+  for (const after_message_id of [1.5, '7', null]) {
+    await assert.rejects(ctx.tools.get('legion_status').execute({ task_ref: taskRef, after_message_id }, exec))
+  }
   assert.equal(calls.length, 0)
   await submit.execute({
     key: 'safe', query: 'The task',
@@ -192,12 +197,102 @@ test('tool schemas validate input and undeclared fields never reach the client',
     team_policy: { candidate_harnesses: ['injected-member'] },
   }, exec)
   assert.deepEqual(calls[0].args[0], { key: 'safe', query: 'The task' })
+  await ctx.tools.get('legion_status').execute({
+    task_ref: taskRef, after_message_id: 7,
+    recipient: 'another-recipient', mark_read: true, sessionId: 'another-owner',
+  }, exec)
+  assert.deepEqual(calls[1].args[0], { task_ref: taskRef, after_message_id: 7 })
   for (const tool of ctx.tools.schemas()) {
     for (const key of ['sessionId', 'signal', 'token', 'baseUrl', 'projectBindingFile', 'project_context',
       'candidateHarnesses', 'candidate_harnesses', 'candidates', 'plan', 'team_policy']) {
       assert.ok(!Object.hasOwn(tool.parameters.properties, key), `${tool.name} must not offer ${key}`)
     }
   }
+})
+
+test('native status mailbox cursor exposes the next commander reply without marking or consuming it', async t => {
+  const plugin = await loadPlugin()
+  const stateDirectory = await mkdtemp(join(tmpdir(), 'legion-mailbox-entry-test-'))
+  t.after(() => rm(stateDirectory, { recursive: true, force: true }))
+  const { ctx, install } = await host(t)
+  // Keep the entry, client and scoped store real; only credential acquisition and
+  // HTTP are doubled. No server, model, or native agent loop is started.
+  t.mock.method(LegionClient.prototype, 'token', () => 'fixture-token')
+  const mailbox = [
+    { id: 2, from: 'author', to: 'commander', text: 'Please extract the Markdown tokens.',
+      artifact_refs: [], ts: 1793110002, read_at: null },
+    { id: 5, from: 'reviewer', to: 'commander', text: 'The next request is ready.',
+      artifact_refs: [], ts: 1793110005, read_at: 1793110010.5 },
+  ]
+  const before = structuredClone(mailbox)
+  const requests = []
+  let team
+  globalThis.fetch.mock.mockImplementation(async (url, options) => {
+    const parsed = new URL(url)
+    requests.push(`${options.method} ${parsed.pathname}`)
+    if (parsed.pathname === '/api/legion/dispatch') {
+      assert.equal(options.method, 'POST')
+      const body = JSON.parse(options.body)
+      team = { team_id: body.team_id, conversation_id: body.session_id,
+        tasks: { author: { status: 'running' } }, mailboxes: { commander: mailbox } }
+      return new Response(`event: meta\ndata: ${JSON.stringify({ sid: body.session_id, team_id: body.team_id })}\n\n`,
+        { headers: { 'Content-Type': 'text/event-stream' } })
+    }
+    assert.equal(options.method, 'GET')
+    assert.equal(parsed.searchParams.get('team_id'), team.team_id)
+    assert.equal(parsed.searchParams.has('after_message_id'), false, 'Mail pagination is a local projection')
+    if (parsed.pathname === '/api/legion/team') return Response.json(team)
+    assert.equal(parsed.pathname, '/api/legion/events', 'Status must not use a mark-read or execution endpoint')
+    assert.equal(parsed.searchParams.get('after'), '100', 'Mail cursor must not replace the event cursor')
+    return Response.json({ team_id: team.team_id, events: [], last_event_id: 100 })
+  })
+  await install(plugin, { ...isolatedConfig, stateDirectory, maxEvents: 1 })
+  const exec = { agent: { id: 'mailbox-entry-agent', ctx }, signal: new AbortController().signal }
+  const submitted = await ctx.tools.execute({
+    ...exec, callId: 'mailbox-entry-submit', name: 'legion_submit',
+    arguments: { key: 'mailbox-entry', query: 'Keep the original task and observe replies.' },
+  })
+  assert.equal(submitted.isError, false, JSON.stringify(submitted))
+  assert.equal(submitted.value.submission, 'accepted')
+  const pages = [
+    { after: undefined, ids: [2], next: 2, more: true, read: [null] },
+    { after: 2, ids: [5], next: 5, more: false, read: [1793110010.5] },
+    { after: 5, ids: [], next: 5, more: false, read: [] },
+    { after: undefined, ids: [2], next: 2, more: true, read: [null] },
+  ]
+  for (const [index, page] of pages.entries()) {
+    const result = await ctx.tools.execute({
+      ...exec, callId: `mailbox-entry-status-${index}`, name: 'legion_status',
+      arguments: { task_ref: submitted.value.task_ref, after_event_id: 100,
+        ...(page.after === undefined ? {} : { after_message_id: page.after }) },
+    })
+    assert.equal(result.isError, false, JSON.stringify(result))
+    const value = result.value
+    assert.deepEqual(value.mailbox.messages.map(message => message.id), page.ids,
+      'The native tool must forward after_message_id instead of replaying page one')
+    assert.equal(value.mailbox.after_message_id, page.after ?? 0)
+    assert.equal(value.mailbox.next_message_id, page.next)
+    assert.equal(value.mailbox.more_messages, page.more)
+    assert.equal(value.mailbox.truncated, page.more)
+    assert.equal(value.mailbox.total_messages, 2)
+    assert.equal(value.mailbox.state, 'available')
+    assert.equal(value.mailbox.source, 'team.mailboxes.commander')
+    assert.equal(value.mailbox.trust, 'untrusted_source')
+    assert.deepEqual(value.mailbox.messages.map(message => message.read_at), page.read)
+    assert.equal(value.mailbox.read_receipts_modified, false)
+    assert.equal(value.mailbox.model_consumption, 'not_observed')
+    assert.equal(value.next_event_id, 100)
+    assert.deepEqual(JSON.parse(result.content[0].text), value, 'The model-visible result must retain mailbox facts')
+    if (index === 1) {
+      assert.equal(value.mailbox.messages[0].from, 'reviewer')
+      assert.equal(value.mailbox.messages[0].text, 'The next request is ready.')
+    }
+  }
+  assert.deepEqual(mailbox, before)
+  assert.deepEqual(requests, [
+    'POST /api/legion/dispatch',
+    ...Array.from({ length: 4 }, () => ['GET /api/legion/team', 'GET /api/legion/events']).flat(),
+  ])
 })
 
 test('native tools and continue use configured candidates, rejecting same-key changes after plugin reload', async t => {
@@ -310,6 +405,159 @@ test('missing token does not block installation; execution fails before network 
   assert.equal(globalThis.fetch.mock.callCount(), 0)
 })
 
+test('public discovery and pinned source reading work without a Legion token and ignore undeclared authority', async t => {
+  const plugin = await loadPlugin()
+  const { ctx, install } = await host(t)
+  await install(plugin, isolatedConfig)
+  const calls = []
+  t.mock.method(GitHubSources.prototype, 'search', async (args, execution) => {
+    calls.push({ method: 'search', args, execution })
+    return { items: [{ repository: 'fixture/project' }] }
+  })
+  t.mock.method(GitHubSources.prototype, 'read', async (args, execution) => {
+    calls.push({ method: 'read', args, execution })
+    return { repository: args.repository, commit: args.commit, content: 'fixture source', trust: 'untrusted_source' }
+  })
+  const agent = { id: 'public-source-agent', ctx }
+  const controller = new AbortController()
+  const signal = controller.signal
+  const search = await ctx.tools.execute({
+    name: 'legion_discover', arguments: { query: 'markdown', source: 'github', token: 'ignored' },
+    callId: 'discover-no-token', agent, signal,
+  })
+  assert.equal(search.isError, false, JSON.stringify(search))
+  assert.equal(search.value.github.state, 'available')
+  assert.deepEqual(calls[0].args, { query: 'markdown', limit: 10 })
+  const read = await ctx.tools.execute({
+    name: 'legion_source',
+    arguments: { action: 'read', repository: 'fixture/project', commit: 'a'.repeat(40),
+      path: 'README.md', token: 'ignored', baseUrl: 'https://untrusted.example' },
+    callId: 'source-no-token', agent, signal,
+  })
+  assert.equal(read.isError, false, JSON.stringify(read))
+  assert.equal(read.value.content, 'fixture source')
+  assert.deepEqual(calls[1].args, { repository: 'fixture/project', commit: 'a'.repeat(40), path: 'README.md' })
+  assert.equal(calls[1].execution.signal.aborted, false)
+  controller.abort()
+  assert.equal(calls[1].execution.signal.aborted, true, 'The original host signal still cancels source reads')
+  assert.equal(globalThis.fetch.mock.callCount(), 0)
+})
+
+test('bundle wiring records fetched commit and license facts, writes through native tools, and never installs', async t => {
+  const plugin = await loadPlugin()
+  const { ctx, install } = await host(t)
+  await install(plugin, isolatedConfig)
+  const directory = await mkdtemp(join(tmpdir(), 'legion-bundle-wiring-'))
+  t.after(() => rm(directory, { recursive: true, force: true }))
+  const writes = []
+  ctx.tools.register(defineTool({
+    name: 'write', description: 'Fixture native workspace write',
+    parameters: { file_path: { type: 'string', required: true }, content: { type: 'string', required: true } },
+    output: { schema: { type: 'string' }, render: (_args, value) => [{ type: 'text', text: value }] },
+    execute: async args => { writes.push(args); return 'written' },
+  }))
+  const fetched = t.mock.method(GitHubSources.prototype, 'inspect', async args => ({
+    status: 'inspected', repository: args.repository, commit: 'c'.repeat(40),
+    url: `https://github.com/${args.repository}/tree/${'c'.repeat(40)}`,
+    fetched_at: '2026-10-27T00:00:00.000Z', source: { sha256: 'd'.repeat(64) },
+    license: { status: 'detected', assessment: 'not_performed',
+      file: { path: 'LICENSE', content: 'Fixture license text', sha256: 'e'.repeat(64), truncated: false } },
+    readme: null, manifests: [], truncated: false, errors: [],
+  }))
+  const result = await ctx.tools.execute({
+    name: 'legion_bundle', callId: 'bundle-wiring',
+    arguments: {
+      directory,
+      source_refs: [{ repository: 'fixture/project', ref: 'v1.0.0' }],
+      spec: { package_name: 'dsh-plugin-fixture', version: '1.0.0', description: 'Fixture adapter',
+        plugins: [{ id: 'inspect', title: 'Inspect', description: 'Inspect capability', entry: 'inspect.js' }],
+        files: [{ path: 'inspect.js', content: 'export function apply() {}' }] },
+      provenance: [{ commit: 'forged' }], token: 'forged',
+    },
+    agent: { id: 'bundle-agent', ctx }, signal: new AbortController().signal,
+  })
+  assert.equal(result.isError, false, JSON.stringify(result))
+  assert.equal(result.value.state, 'written_not_installed')
+  assert.equal(result.value.execution_verified, false)
+  assert.equal(fetched.mock.callCount(), 1)
+  const provenance = JSON.parse(writes.find(file => file.file_path.endsWith('/provenance.json')).content)
+  assert.equal(provenance[0].commit, 'c'.repeat(40))
+  assert.equal(provenance[0].license.file.content, 'Fixture license text')
+  assert.ok(!JSON.stringify(provenance).includes('forged'))
+  assert.equal(globalThis.fetch.mock.callCount(), 0)
+})
+
+test('plugin unload cancels a pending public source read without aborting the caller', async t => {
+  const plugin = await loadPlugin()
+  const { ctx, install } = await host(t)
+  const fiber = await install(plugin, isolatedConfig)
+  const started = Promise.withResolvers()
+  t.mock.method(GitHubSources.prototype, 'read', async (_args, { signal }) => {
+    started.resolve()
+    return new Promise((_resolve, reject) => {
+      signal.addEventListener('abort', () => reject(signal.reason), { once: true })
+    })
+  })
+  const controller = new AbortController()
+  const pending = ctx.tools.execute({
+    name: 'legion_source', callId: 'unload-source',
+    arguments: { action: 'read', repository: 'fixture/project', commit: 'a'.repeat(40), path: 'README.md' },
+    agent: { id: 'source-agent', ctx }, signal: controller.signal,
+  })
+  await started.promise
+  await fiber.dispose()
+  const result = await pending
+  assert.equal(result.isError, true)
+  assert.equal(controller.signal.aborted, false)
+})
+
+test('submission includes only explicitly selected visible tool schemas, not remote tool grants', async t => {
+  const plugin = await loadPlugin()
+  const calls = recordClient(t)
+  const { ctx, install } = await host(t)
+  await install(plugin, isolatedConfig)
+  const agent = { id: 'capability-agent', ctx }
+  const signal = new AbortController().signal
+  const result = await ctx.tools.execute({
+    name: 'legion_submit',
+    arguments: { key: 'capabilities', query: 'Use an available capability', context: 'User context',
+      tool_names: ['legion_source'] },
+    callId: 'capabilities-submit', agent, signal,
+  })
+  assert.equal(result.isError, false, JSON.stringify(result))
+  assert.match(calls[0].args[0].context, /User context/)
+  assert.match(calls[0].args[0].context, /legion_source/)
+  assert.match(calls[0].args[0].context, /grants_remote_access.*false/)
+  assert.ok(!Object.hasOwn(calls[0].args[0], 'tool_names'))
+  const denied = await ctx.tools.execute({
+    name: 'legion_submit', arguments: { key: 'unknown', query: 'Task', tool_names: ['missing_tool'] },
+    callId: 'capability-denied', agent, signal,
+  })
+  assert.equal(denied.isError, true)
+  assert.equal(calls.length, 1)
+})
+
+test('ecosystem instructions are optional on-demand skills, disappear on unload, and do not block delegation', async t => {
+  const plugin = await loadPlugin()
+  const { ctx, install } = await host(t)
+  const fiber = await install(plugin, isolatedConfig)
+  await install(SkillRegistry)
+  await new Promise(resolve => setImmediate(resolve))
+  const skill = await ctx.skills.get('legion-ecosystem')
+  assert.ok(skill, 'The native skill catalog must expose the ecosystem entry')
+  assert.match(skill.content, /legion_discover/)
+  assert.match(skill.content, /legion_bundle/)
+  assert.match(skill.content, /legion_call/)
+  assert.match(skill.content, /plugin_manager/)
+  assert.match(skill.content, /cordis-plugin-development/)
+  assert.match(skill.content, /references\/host-plugin\.md/)
+  assert.match(skill.content, /references\/practices\.md/)
+  assert.match(skill.content, /service injection is not tool-execution approval/)
+  assert.match(skill.content, /module import, fiber activation and actual tool execution are separate facts/)
+  await fiber.dispose()
+  assert.equal(await ctx.skills.get('legion-ecosystem'), undefined)
+})
+
 test('optional commands arrive, unload and return without disposing the client or leaking registrations', async t => {
   const plugin = await loadPlugin()
   const calls = recordClient(t)
@@ -331,7 +579,7 @@ test('optional commands arrive, unload and return without disposing the client o
   assert.deepEqual(calls[0].args[0], { sessionId: agent.id, signal })
   await firstCommands.dispose()
   assert.equal(dispose.mock.callCount(), 0, 'Losing only the optional command service must not dispose tool work')
-  assert.equal(ctx.tools.schemas().length, 7)
+  assert.equal(ctx.tools.schemas().length, names.length)
   await install(CommandRuntime)
   await new Promise(resolve => setImmediate(resolve))
   assert.equal(ctx.commands.list(agent).length, 1)

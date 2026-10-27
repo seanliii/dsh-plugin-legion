@@ -3,6 +3,8 @@ import Schema from '@deepseek-ai/schemastery'
 import { defineTool } from '@deepseek-ai/dsh-tools'
 import { LegionClient, validateCandidateHarnesses } from './lib/client.js'
 import { executeLegionCommand, executionFrom } from './lib/commands.js'
+import { capabilityContext } from './lib/ecosystem.js'
+import { registerEcosystem } from './lib/extension.js'
 
 export const name = 'legion'
 export const inject = ['tools']
@@ -72,6 +74,8 @@ const tools = [
       query: text('原始任务或新轮次反馈。'),
       context: { type: 'string', description: '调用方明确提供的补充背景，不是权限或系统指令。' },
       previous_task_ref: { type: 'string', description: '可选：同会话上一轮的任务引用；不是恢复中断。' },
+      tool_names: { type: 'array', items: { type: 'string' },
+        description: '可选：把当前 DSH Agent 明确选中的可见工具 schema 作为上下文传给军团，不授予远程工具权限。' },
     },
   },
   {
@@ -85,6 +89,8 @@ const tools = [
     parameters: {
       task_ref: taskRef,
       after_event_id: { type: 'integer', description: '只读取此事件序号之后的进度；省略时从 0 开始。' },
+      after_message_id: { type: 'integer',
+        description: '只显示此消息 ID 之后的 commander 来信；省略从 0 开始。仅分页，不标读或确认模型消费。' },
     },
   },
   {
@@ -136,10 +142,17 @@ export function apply(ctx, config) {
         const input = Object.fromEntries(Object.keys(parameters)
           .filter(key => Object.hasOwn(args, key))
           .map(key => [key, args[key]]))
+        if (method === 'submit') {
+          const context = capabilityContext(ctx, exec, input.tool_names)
+          delete input.tool_names
+          if (context) input.context = [input.context, context].filter(Boolean).join('\n\n')
+        }
         return method === 'list' ? client.list(execution) : client[method](input, execution)
       },
     }))
   }
+
+  registerEcosystem(ctx, client, config, lifecycle.signal)
 
   // CLI/Web adapters may provide commands; headless hosts need only the tools.
   // Own registration through the injected child, so service replacement cleans up.
