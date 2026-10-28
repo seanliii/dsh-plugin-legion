@@ -1,8 +1,8 @@
 # Security and trust / 安全与信任
 
-**0.2.0 is not a production-wide safety certification.** The final integrated record reports **331/331 passed** on Node **v24.20.0**, with `npm run check` and `npm test` both exiting 0 and unchanged source hashes before/after. Its timestamp is **2026-10-27T20:25:16Z (UTC) / 2026-10-28 04:25:16 Asia/Shanghai**. The scope is isolated unit tests and the official rc.2 Runtime, not a real Host or remote-consumption check.
+**0.2.0 is not a production-wide safety certification.** The final integrated record reports **357/357 passed** on Node **v24.20.0**, with `npm run check` and `npm test` both exiting 0, no failures/cancellations/skips, and unchanged source hashes before/after. It ran **2026-10-28 04:25:05–04:25:09 UTC / 12:25:05–12:25:09 Asia/Shanghai**. All 30 recorded code/test/manifest files still match; this reuses the same-byte integrated evidence rather than claiming another run. The scope is isolated tests and the official rc.2 Runtime, not a real Host or remote-consumption check.
 
-**A／B 已修复并纳入当前回归：** 显式消息 ACK 嵌入 data URL 的脱敏，以及旧 v1 `received` 等投递事实的只读恢复。这不表示所有格式、返回路径或未知秘密均被覆盖。最新保存的原生现场仍等待原 `plugin_manager list_bundles` 用户审批；图片、结构化输出、取消、结束回合和后续显式发送仍需真实 Host 重放。本文只复用现有证据，没有联网、重跑测试或操作 Host。
+**已修复并纳入当前回归：** 显式消息 ACK 嵌入 data URL 的脱敏、旧 v1 `received` 等投递事实的只读恢复，以及固定来源重试。另有来源重试独立 13 项复核通过，不与全套相加。这不表示所有格式、返回路径或未知秘密均被覆盖。一次 `plugin_manager list_bundles` 许可已用于查询，重复查询未获批，不包含安装／启用／重启。图片、结构化输出、取消、结束回合和后续显式发送仍需真实 Host 重放。
 
 ## 1. Start without a Legion credential / 开源接入不需要先交令牌
 
@@ -16,15 +16,15 @@ Only the user/operator configures the service endpoint. `tokenEnv` names a Host 
 
 ## 2. Host plugins are trusted code / Host 插件不是沙箱
 
-An installed DSH bundle executes with the Host's access to files, environment and network, **outside the agent sandbox**. Review the whole pinned commit and its dependencies before installation/enabling. Native approvals are not a guarantee that a plugin is harmless. Legion Bridge is independent community code, not an official DeepSeek endorsement.
+When enabled and loaded, a DSH bundle executes with the Host's access to files, environment and network, **outside the agent sandbox**. Review the whole pinned commit and its dependencies before installation/enabling. Native approvals are not a guarantee that a plugin is harmless. Legion Bridge is independent community code, not an official DeepSeek endorsement.
 
-bundle 以 Host 权限运行，不能把 agent 沙箱当成插件隔离边界。安装原生插件意味着信任实际代码和依赖，不只是信任搜索结果里的说明。
+启用并加载后的 bundle 以 Host 权限运行，不能把 agent 沙箱当成插件隔离边界。禁用安装仍可能涉及依赖解析和构建风险；安装原生插件意味着信任实际代码和依赖，不只是信任搜索结果里的说明。
 
 DSH remains the decision maker and runs the official `plugin_manager`. The connector does not take over the main loop, install a second runner or automatically execute instructions from repositories or remote mailboxes. Repository text, tool descriptions, market entries and task messages are **untrusted data**, not system instructions, installation approvals or access grants.
 
 远端文字只能提供信息；是否执行某个工具由当前 DSH 判断并遵守原生权限。不得把 README、市场描述或任务消息里的命令当成自动执行授权。
 
-Pinned official references: [DSH safety statement](https://github.com/deepseek-ai/deepseek-harness/blob/22ddee3792402c3e70ec5f86a63c3e3e895a2f60/SAFETY.md) and [plugin publication and trust](https://github.com/deepseek-ai/deepseek-harness/blob/22ddee3792402c3e70ec5f86a63c3e3e895a2f60/docs/user/develop/basic/publish.md#L161-L185). These are source references, not a new live deployment audit.
+Pinned official references: [DSH safety statement](https://github.com/deepseek-ai/deepseek-harness/blob/22ddee3792402c3e70ec5f86a63c3e3e895a2f60/SAFETY.md) and [plugin publication and trust](https://github.com/deepseek-ai/deepseek-harness/blob/22ddee3792402c3e70ec5f86a63c3e3e895a2f60/docs/user/develop/basic/publish.md#L161-L185). The fixed `SAFETY.md` body was verified against its Git blob on **2026-10-28 04:46:03 UTC**: 1,673 bytes, SHA-256 `62075bb51e0f7790441e7722ff12063107b4866019332e71ef01b63b6f880fee`. It describes an experimental developer preview that has not been security-audited. This verifies that one source file, not a deployed Host or all current marketplace rules.
 
 ## 3. Public sources, packages and installation / 公开来源、包装与安装
 
@@ -40,9 +40,13 @@ For local tools and markets, `legion_discover` only sees the current Agent's too
 
 ### Packaging / 包装
 
-`buildBundle` is a pure text/JSON packaging helper: no disk access, network, installation or input-JavaScript execution. **The `legion_bundle` model tool is different:** it really reads public sources for provenance and invokes native `write` for the generated files. It does not turn arbitrary source into an adapter or prove that the supplied adapter is safe or runnable.
+`buildBundle` is a pure text/JSON packaging helper: no disk access, network, cache, installation or input-JavaScript execution. **The `legion_bundle` model tool is different:** it obtains actual public-source observations, or reuses eligible pinned facts, and invokes native `write` for the generated files. It does not turn arbitrary source into an adapter or prove that the supplied adapter is safe or runnable.
 
 纯包装函数与有来源读取／原生写入行为的模型工具必须分开。模型／作者先适配接口，包装器只包装文件；语法、运行效果、外部环境和权限需求仍需核查。
+
+Pinned-source reuse is limited to the same native session and connector instance/lifetime, keyed by supplied repository identifiers, full 40-hex commits and path lists. It retains at most **16 groups / 1 MiB**, clears on disposal/lifecycle abort, and contains no authored adapter, destination, native execution result or permission. Individual call cancellation does not clear earlier successful facts. Branches/tags/short or omitted refs and partial/errored observations—including nested `license.error`—are fetched again.
+
+复用的是来源观察，不是授权；成功但截断的预览可复用，原 `fetched_at`、整文件 hash、截断和许可观察保留，明确标 `source_retrieval`／`retrieval`。它不重新确认当前 GitHub 可访问性、不证明读完全文或具备分发权。每次仍核当前 spec／目录并逐文件走当前原生写入与先读后写要求；错误重取、权限／父链／取消／卸载边界有隔离回归，不冒充旧 Host 已加载修复。
 
 Path, duplicate, reserved-metadata, unknown-field and size checks are hard protocol protections, not code review or malware detection. Generated packages have no `prepare`, `postinstall` or other scripts and accept only exact direct dependency versions. This does **not** eliminate scripts or risks in transitive dependencies. No import scanning, automatic `peerDependencies`/`engines` generation or Host compatibility verification is performed.
 
@@ -56,7 +60,9 @@ Use a dedicated ordinary workspace directory, not `DSH_HOME`/profile storage. Na
 
 Use the official `plugin_manager` to `install_bundle` the reviewed directory, initially with `enabled: false`. Preserve its actual `application`, warnings, pending build approvals and restart requirements; never invent `approvedBuilds` or bypass it by editing profile package files. Each subplugin can be switched separately using native controls, but the bundle is one installation unit. These switches still need real native verification for a generated package.
 
-作者已实际调用 `legion_bundle`，但原 `marked` 双插件在官方 Loader 独立加载时因缺 `tools` 注入而失败；原包未修复、未安装、未调用。开发参考已补，主线程反馈已排队，都不等于作者已消费或改好。当前审批等待仍是上文的 `plugin_manager list_bundles`，不是安装批准；详见 [PLAN](PLAN.md)。
+作者已自行修好 `marked` 双插件的服务注入和 JSON 输出，官方 Loader／ToolRuntime 独立执行 20 次：14 次业务成功、6 次卸载后预期 `UNKNOWN_TOOL`。最新原生包装的 17 个文件已读回且 hash 一致，3 份业务源码与被测版相同；没有代补业务。它仍未在真实 Host 安装，依赖解析别名不证明安装后的布局。最后保存的包装回执也未带磁盘新版的 `source_retrieval`，不据此宣称 Host 已加载新代码；详见 [PLAN](PLAN.md)。
+
+Installation needs its own current authorization; the consumed list-query permission cannot be reused. An initially disabled install still downloads/resolves dependencies and may carry dependency/build risks. It does not authorize enabling, restarting, publication or a permanent permission change.
 
 The source code and supplied LICENSE text are preserved, not automatically sanitized. Do not supply private code, secrets or unrelated user files as adapter input. Provenance makes origins inspectable; it is neither a signature nor a license grant.
 
@@ -107,6 +113,7 @@ Timeouts and local aborts stop a local wait, not necessarily remote work. HTTP 5
 | Data / 数据 | Location and boundary / 位置与边界 |
 |---|---|
 | Discovery terms and public source reads / 搜索与读源 | Sent to GitHub or user-configured native indexes as needed; returned source text may enter the DSH conversation. / 查询并非无网络，但不需要 Legion token。 |
+| Pinned-source observations / 固定来源观察 | Successful provenance, including bounded license observations, retained only in memory within the same connector lifetime/session scope, capped at 16 groups / 1 MiB. Original timestamps/hashes remain; disposal/lifecycle abort clears them. / 不缓存适配代码、目录、执行结果或权限；不是新鲜访问证明。 |
 | Adapter files and provenance / 适配文件与来源记录 | Written into the selected workspace; includes supplied code, source facts and supplied license text. No automatic removal on uninstall. / 不替作者清除输入代码里的秘密。 |
 | Task/context/messages / 任务与消息 | Present in DSH and Legion sessions. Raw inputs/full histories are not separately copied into the recovery index. / 不等于两端会话无留存。 |
 | Native-call metadata / 原生调用元数据 | New v2 ledger stores identity and child/ancestor status, not result bodies; no automatic sending or body replay. / 新 v2 只存元数据，不回正文、不自动发送。 |
@@ -129,7 +136,7 @@ To stop remote work, request cancellation explicitly and inspect the original te
 
 停止远端工作要明确取消并核对，不能用卸载代替。需要分享诊断时，去掉令牌、敏感服务地址、任务正文和用户文件内容，不上传未脱敏日志。疑似凭据泄露先私下联系运营者；公开仓库／反馈入口尚未发布，不能把目标仓库地址当成已可用入口。
 
-The new 0.2 native installation/loading, local result retention, independent switches, actual calls, later explicit messages, consumption, recovery, uninstall and user interaction need their own evidence. Current isolated tests, the confirmed packaging call and the author's earlier local smoke do not establish these results or a general safety guarantee. The two specific ACK/recovery fixes have recorded regressions; broader real-Host acceptance and the author's bundle repair remain open.
+The new 0.2 real-Host loading, installation of the repaired adapter, independent UI switches, actual Host calls, later explicit messages, consumption, recovery, uninstall and user interaction need their own evidence. The author's repair, 20 official isolated-runtime calls and 17-file package readback are established within their recorded scope; they do not establish an installed dependency layout or general safety guarantee. The ACK/recovery/source-retry fixes have recorded regressions. Broader real-Host acceptance remains open; the author's two recorded adapter defects are no longer open.
 
 ## 8. License boundary / 许可边界
 

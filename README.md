@@ -59,10 +59,12 @@ The author first adapts the real interfaces using DSH's native plugin APIs. `leg
 
 - Split by **independently useful capability**, not mechanically by source file. Shared implementation can stay shared.
 - One bundle is the installation unit. Each `<package>/<id>` has its own native plugin row, export, display name/description and icon metadata, so capabilities can be enabled or disabled separately. They are not separate npm packages.
-- `package.json`, `cordis.patch.yml`, locales, a simple original SVG icon, README, `provenance.json` and `SOURCE-NOTICE.md` are generated. Source facts are fetched again by the tool; missing or partial evidence stays visible.
+- `package.json`, `cordis.patch.yml`, locales, a simple original SVG icon, README, `provenance.json` and `SOURCE-NOTICE.md` are generated. The tool fetches source facts or reuses successful, fully pinned observations from the same DSH session and plugin lifetime. Reuse preserves the original fetch time, hashes and truncation; partial or failed observations are fetched again.
 - A supplied `LICENSE` is preserved verbatim. No upstream license is invented or replaced with this connector's MIT license. Dependencies must use exact versions; runtime requirements are not inferred from imports.
 
 Choose a dedicated ordinary workspace directory, not a DSH profile directory; native `write` may overwrite existing same-path files. A successful result is `written_not_installed`. Listed hashes describe expected written content, **not independent readback**. DSH can then use official `plugin_manager` to install the directory initially disabled, review its actual warnings/build approvals, and enable the intended bundle and individual plugins. Installation, active state and real calls each still need verification.
+
+Retries still validate the current adapter and directory and request current native write permissions for every file; no old execution result or approval is replayed. `source_retrieval` distinguishes `"fetched"` from `"reused_pinned_facts"`. This is source-observation reuse, not a new fetch, access check or quality judgement. See [the packaging contract](docs/PROTOCOL.md#5-package-authored-adapters--包装作者已完成的适配代码).
 
 ## Optional: collaborate with your Legion service
 
@@ -122,11 +124,13 @@ Do **not** put execution and a success message in the same `run_code` or another
 
 ## Validation status — 0.2.0
 
-**Offline validation passed:** on Node **v24.20.0**, `npm run check` and `npm test` both exited 0, with **331/331 tests passed**. The record is dated **2026-10-27 20:25:16 UTC / 2026-10-28 04:25:16 Asia/Shanghai**, with unchanged source hashes before/after. It covers isolated unit tests and the official rc.2 Runtime, not a real Host journey. This documentation update reused the evidence without rerunning tests.
+**Offline validation passed:** on Node **v24.20.0**, `npm run check` and `npm test` both exited 0, with **357/357 tests passed**, no failures, cancellations or skips. The run was **2026-10-28 04:25:05–04:25:09 UTC / 12:25:05–12:25:09 Asia/Shanghai**, with unchanged source hashes before/after. All 30 recorded code, test and manifest files still match that snapshot. The integrated suite is reused, not reported as a new run; it covers isolated tests and the official rc.2 Runtime, not a real Host journey.
 
-The explicit-message ACK embedded-data-URL leak and legacy v1 delivery-ACK recovery are fixed for the covered cases. This is not a guarantee for every response format or execution path.
+The explicit-message ACK embedded-data-URL leak, legacy v1 delivery-ACK recovery and pinned-source retry handling are fixed for the covered cases. An independent 13-case source-retry review also passed. These counts are not added to the suite total, and do not guarantee every response format or execution path.
 
-**Real Host acceptance remains open.** The author has used `legion_bundle`, but the original `marked` dual-plugin bundle still lacks `tools` injection and is unrepaired, uninstalled and uncalled. The current approval wait is still the original `plugin_manager list_bundles`, not an installation approval. See [the implementation and remaining acceptance work](docs/PLAN.md) for the blocker and the separate installation, switching, execution, messaging and consumption checks.
+**The author repaired the `marked` adapter.** Independent official rc.2 Loader/ToolRuntime checks made 20 actual calls: 14 successful business calls and 6 expected `UNKNOWN_TOOL` results after unloading. The missing `tools` injection and invalid JSON output were repaired by the author, not patched into the test. A subsequent native `legion_bundle` result has been independently read back: all 17 files match its hashes, and the three runtime source files match the tested version. Dependency resolution used local aliases, so the installed dependency layout is not yet verified.
+
+**Real Host acceptance remains open.** The one-time `plugin_manager list_bundles` permission was used for that query only; a repeat query was not authorized. It did not authorize installation, enabling or restarting. The on-disk retry fix is not proof that the existing Host loaded it—the last saved native packaging receipt lacks `source_retrieval`. Installation, separate switches, real Host calls, later explicit messages and remote consumption still need their own evidence. See [the implementation and remaining acceptance work](docs/PLAN.md).
 
 ## Data and license
 

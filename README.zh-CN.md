@@ -59,10 +59,12 @@ dsh plugin --profile web -w add 'github:seanliii/dsh-plugin-legion#<PUBLIC_FULL_
 
 - 按**可独立使用的能力**拆分，不按源文件机械拆分；共用代码可以继续共用。
 - 安装单位是整个 bundle。每项 `<package>/<id>` 有独立原生插件行、export、显示名称／说明和图标元数据，因此可以分别启停；它们不是各自独立的 npm 包。
-- 生成 `package.json`、`cordis.patch.yml`、locale、简单原创 SVG 图标、README、`provenance.json` 和 `SOURCE-NOTICE.md`。工具会重新读取来源事实，缺失和部分读取不会被抹掉。
+- 生成 `package.json`、`cordis.patch.yml`、locale、简单原创 SVG 图标、README、`provenance.json` 和 `SOURCE-NOTICE.md`。工具会读取来源事实，或在同一 DSH 会话、同一插件生命周期内复用成功获取的完整 commit 观察；保留原抓取时间、hash 和截断，部分成功或失败观察下次仍会重新获取。
 - 调用方提供的 `LICENSE` 原文保留，不替上游编造许可，也不套用连接器的 MIT。依赖只能声明固定完整版本，不从 imports 自动猜运行环境。
 
 请选择独立的普通工作目录，不要选 DSH profile 目录；原生 `write` 可能覆盖已有同名文件。成功返回 `written_not_installed`，列出的 hash 只是预期写入内容，**不是独立读回结果**。之后由 DSH 使用官方 `plugin_manager` 安装该目录，先保持禁用，检查真实警告和构建审批，再启用需要的 bundle 与各项插件。安装状态、激活状态、真实调用仍须分别验证。
+
+重试仍会检查当前适配代码和目录，每个文件都走当前原生写入权限，不重放旧执行结果或审批。`source_retrieval` 区分 `"fetched"`（本次获取）与 `"reused_pinned_facts"`（复用固定来源观察）；复用不冒充重新联网、重新检查访问权或质量判断。详见[包装协议](docs/PROTOCOL.md#5-package-authored-adapters--包装作者已完成的适配代码)。
 
 ## 可选：和你自己的 Legion 服务协作
 
@@ -122,11 +124,13 @@ dsh plugin --profile web -w add 'github:seanliii/dsh-plugin-legion#<PUBLIC_FULL_
 
 ## 验证状态：0.2.0
 
-**离线验证已通过：** Node **v24.20.0** 下，`npm run check` 与 `npm test` 均退出 0，全套 **331/331 通过**。记录时间为 **2026-10-27 20:25:16 UTC／2026-10-28 04:25:16 Asia/Shanghai**，源码前后哈希一致。范围是隔离单测和官方 rc.2 Runtime，不是真实 Host 旅程；本次文档更新只复用证据，没有重跑测试。
+**离线验证已通过：** Node **v24.20.0** 下，`npm run check` 与 `npm test` 均退出 0，全套 **357/357 通过**，失败、取消、跳过均为 0。运行时间为 **2026-10-28 04:25:05–04:25:09 UTC／同日 12:25:05–12:25:09 Asia/Shanghai**，源码前后哈希一致。记录中的 30 份代码、测试和清单文件仍逐字节匹配；复用这次集成证据，不冒充新跑了一遍。范围是隔离测试和官方 rc.2 Runtime，不是真实 Host 旅程。
 
-显式消息 ACK 嵌入 data URL 的泄漏和旧 v1 投递 ACK 恢复，已在覆盖的用例中修复并通过回归；这不保证所有返回格式或执行路径都已验收。
+显式消息 ACK 嵌入 data URL 的泄漏、旧 v1 投递 ACK 恢复和固定来源重试，已针对发现的用例修复并纳入回归。另有来源重试的独立 13 项复核通过；专项数字不与全套相加，也不保证覆盖所有返回格式或执行路径。
 
-**真实 Host 验收仍未完成。** 作者已实际使用 `legion_bundle`，但原 `marked` 双插件包仍缺 `tools` 注入，未修复、未安装、未调用。当前等待的仍是原 `plugin_manager list_bundles` 审批，不是安装审批。具体阻断，以及安装、独立开关、执行、消息和消费各自的待验事项，见[当前实现与验收计划](docs/PLAN.md)。
+**作者已经修好了 `marked` 适配包。** 独立的官方 rc.2 Loader／ToolRuntime 实际调用 20 次：14 次业务成功、6 次卸载后的预期 `UNKNOWN_TOOL`。缺少 `tools` 注入和不符合 JSON 契约的问题由作者修复，不是测试临时补出来的。之后的原生 `legion_bundle` 包装已独立读回：17 个文件与回执 hash 一致，3 份运行源码与已执行版本一致。依赖解析用了本地别名，尚不能证明安装后的依赖布局可用。
+
+**真实 Host 验收仍未完成。** 一次性的 `plugin_manager list_bundles` 许可已用于原查询，重复查询没有获批；它不包含安装、启用或重启。磁盘上的来源重试修复不等于旧 Host 已加载，最后保存的原生包装回执仍没有 `source_retrieval`。安装、独立开关、真实 Host 调用、后续显式消息和远端实际消费仍须分别验收。详见[当前实现与验收计划](docs/PLAN.md)。
 
 ## 数据与许可
 

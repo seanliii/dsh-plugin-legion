@@ -1,8 +1,8 @@
 # Protocol / 协议
 
-This is the **0.2.0** connector contract, not a promise that every Legion deployment implements the same API. The final integrated record reports **331/331 passed** on Node **v24.20.0**: `npm run check` and `npm test` both exited 0, with unchanged source hashes before/after. Its scope is isolated unit tests and the official rc.2 Runtime, not a real Host or end-to-end acceptance.
+This is the **0.2.0** connector contract, not a promise that every Legion deployment implements the same API. The final integrated record reports **357/357 passed** on Node **v24.20.0**: `npm run check` and `npm test` both exited 0, with unchanged source hashes before/after and no failures, cancellations or skips. Its scope is isolated tests and the official rc.2 Runtime, not a real Host or end-to-end acceptance.
 
-记录时间为 **2026-10-27T20:25:16Z（UTC）／2026-10-28 04:25:16 Asia/Shanghai**。当前全套已包含 ACK 脱敏、v1 恢复及两步终态回归；本次文档更新没有重跑测试，也不宣称覆盖所有流。真实原生旅程和后续显式消息**仍待验收**。
+运行时间为 **2026-10-28 04:25:05–04:25:09 UTC／同日 12:25:05–12:25:09 Asia/Shanghai**。当前全套包含 ACK 脱敏、v1 恢复、两步终态与固定来源重试回归；30 份代码、测试和清单文件仍与该记录匹配，复用同字节证据，不冒充重跑全套。真实 Host 旅程和后续显式消息**仍待验收**。
 
 For short examples, start with the [English README](../README.md) or [中文入门](../README.zh-CN.md). Discovery, public source reading and packaging need no Legion token. Optional task collaboration, including the task-bound `legion_call`, still needs personal service configuration and authorization even though `legion_call` sends no HTTP.
 
@@ -10,7 +10,7 @@ DSH 自己决定下一步，连接器不接管主循环，不强制固定任务�
 
 **Implementation and acceptance are separate / 实现与验收分开：** current code binds context/turn methods to the original execution, forwards local image contexts, waits for ancestor outcomes before saving terminal metadata, and removes messaging from `legion_call`. Source failures retain bounded diagnostics. These changes do not prove that the original Host journey now passes.
 
-显式消息 ACK 嵌入 data URL 脱敏和 v1 历史投递状态恢复已修复，并有当前全套证据。作者已实际调用 `legion_bundle`，但原 `marked` 双插件包缺 `tools` 注入的激活阻断仍未修，未安装、未调用。最新保存的审批仍是原 `plugin_manager list_bundles`；反馈已排队不等于作者消费或修复。具体未验项见 [PLAN](PLAN.md)。本文只复用保存的证据与本地 rc.2，没有联网或操作 Host。
+作者已自行修复 `marked` 双插件的服务注入和 JSON 输出问题；官方 rc.2 Loader／ToolRuntime 的 20 次实际调用为 14 次业务成功、6 次卸载后预期 `UNKNOWN_TOOL`。最新原生包装的 17 个文件已独立读回，3 份运行源码与被测字节一致；这不等于真实安装后的依赖布局已验。一次 `list_bundles` 许可已用于查询，重复查询未获批，不包含安装／启用／重启。磁盘修复也不证明旧 Host 已加载：最后保存的原生包装回执没有下文新增的 `source_retrieval`。具体未验项见 [PLAN](PLAN.md)。
 
 ## 1. Runtime and native tools / 运行环境与原生工具
 
@@ -129,9 +129,21 @@ For typed GitHub source errors, the current implementation keeps locally defined
 
 ## 5. Package authored adapters / 包装作者已完成的适配代码
 
-`legion_bundle` requires an absolute ordinary workspace `directory`, a `spec`, and 1–4 `source_refs`. Each reference is `{ repository, ref?, paths? }`, with at most four extra source paths. Prefer the full commit already reviewed. The tool validates the spec, really re-runs source inspect/read to obtain provenance, then uses native `write`; it does not accept invented caller-supplied hashes or license observations.
+`legion_bundle` requires an absolute ordinary workspace `directory`, a `spec`, and 1–4 `source_refs`. Each reference is `{ repository, ref?, paths? }`, with at most four extra source paths. Prefer the full commit already reviewed. The tool validates the current spec, obtains actual source observations or reuses eligible pinned observations, then uses native `write`; it does not accept invented caller-supplied hashes or license observations.
 
-输出目录必须是普通工作区的绝对目录，不能是 DSH 配置目录。`source_refs` 优先使用已审的完整 commit；工具会真实复读来源生成记录，不接受编造的来源 hash 或许可事实。
+输出目录必须是普通工作区的绝对目录，不能是 DSH 配置目录。`source_refs` 优先使用已审的完整 commit；来源事实来自真实读取或下述有限复用，不接受编造的来源 hash 或许可事实。
+
+### Pinned source observations on retry / 重试时的固定来源观察
+
+- Reuse is scoped to the **same native DSH session and connector instance/lifetime**. Its key includes the supplied repository identifiers, full 40-hex commits and ordered path lists. Branches, tags, short SHAs and omitted refs are fetched again. / 不跨会话、实例或插件生命周期借用来源；不把漂移 ref 当固定来源。
+- Only successful `inspected` observations without errors are retained. `partial`, top-level errors and nested `license.error` are not cached; the next call reads them again. A **successful but truncated preview** may be retained, with its truncation and original whole-file hash unchanged. / 截断不是完整阅读证明；错误不能冻结成永远“已查过”。
+- Reuse preserves the original `fetched_at`, commit, file hashes and license observations. `source_retrieval: "reused_pinned_facts"` in the tool result and `retrieval: "reused_pinned_facts"` on each provenance item explicitly distinguish it from `"fetched"`. It does not imply a fresh network request, current repository access or a license/quality assessment. / 复用必须显示原时间和来源，不制造新鲜证据。
+- The in-memory store is capped at **16 groups / 1 MiB** and cleared on connector disposal or lifecycle abort. An individual cancelled call does not erase earlier successful observations. It stores provenance facts, including bounded license observations, **not authored adapter code, output directories, native execution results or permissions**. / 只保存有限来源事实，不把业务结果或授权做成缓存。
+- Every retry validates the **current** spec and destination and performs each native write under current permissions, including read-before-write requirements. A failed write may leave files and retained successful source observations; neither is a successful installation or a rollback. / 省去重复查同一版本，不省掉当前写入和权限检查。
+
+This behavior belongs to the model tool, not the pure `buildBundle` helper or a global cache for `legion_source`. Its isolated regression/review evidence does not establish that a previously loaded Host is running the on-disk change.
+
+这是模型工具的来源重试行为，不是给纯函数或所有读源调用加全局缓存。当前隔离回归和独立复核不能代替旧 Host 的实际加载核验。
 
 **Shape example only; not runnable adapter code.** Replace every angle-bracket placeholder with real reviewed input. The adapter's example version below is separate from the connector's 0.2.0 version.
 
@@ -194,9 +206,9 @@ The internal synchronous helper **`buildBundle(spec, provenance = [])` is pure**
 }
 ```
 
-The helper preserves caller-provided provenance as data; only the model tool obtains fresh source facts before calling it. Successful **tool** output has:
+The helper preserves caller-provided provenance as data; only the model tool obtains actual source observations or reuses eligible pinned facts before calling it. Each tool-supplied provenance item has `retrieval: "fetched" | "reused_pinned_facts"`. Successful **tool** output has:
 
-纯函数只保留传入事实；模型工具先复读来源再交给它。工具成功结果如下，其中文件路径为绝对路径：
+纯函数只保留传入事实；模型工具先获取或按上述范围复用来源，每项记录带 `retrieval`。工具成功结果如下，其中文件路径为绝对路径：
 
 ```text
 {
@@ -204,6 +216,7 @@ The helper preserves caller-provided provenance as data; only the model tool obt
   plugins: [{ id, rowId, name, title, description, entry }],
   files: [{ path, sha256, bytes }],
   hash_kind: "expected_written_content_not_independent_readback",
+  source_retrieval: "fetched" | "reused_pinned_facts",
   install: {
     tool: "plugin_manager",
     arguments: { action: "install_bundle", target: directory, enabled: false }

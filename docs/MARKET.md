@@ -132,12 +132,14 @@ Keep only this independently written connector and its legitimate dependency dec
 
 | Claim / 声明 | Current record / 当前记录 |
 |---|---|
-| Current offline evidence / 当前离线证据 | Node **v24.20.0**, `npm run check` and `npm test` both exit 0; **331/331 passed**, source hashes unchanged before/after. Isolated unit tests and official rc.2 Runtime only. / 当前集成全套通过，不冒充所有流、Host 或完整适配通过。 |
+| Current offline evidence / 当前离线证据 | Node **v24.20.0**, `npm run check` and `npm test` both exit 0; **357/357 passed**, no failures/cancellations/skips, source hashes unchanged before/after; all 30 recorded files still match. Isolated tests and official rc.2 Runtime only. / 复用同字节集成证据，不冒充所有流或真实 Host 通过。 |
 | Implemented 0.2 interfaces / 已实现入口 | `legion_discover`, `legion_source`, `legion_bundle`, `legion_call`, plus existing collaboration tools. / 接口实现不等于完整用户旅程。 |
-| New native chain / 新增原生链 | **In progress**. The latest saved approval still names the original `plugin_manager list_bundles`, not `install_bundle`. / 未代批、未在本轮操作 Host；安装、开关、调用和后续显式发送仍需各自证据。 |
+| New native chain / 新增原生链 | **In progress**. One `plugin_manager list_bundles` approval was consumed by that query; the repeat query was not authorized. It authorizes no installation, enabling or restart. / 安装、开关、Host 调用和后续显式发送仍需各自授权与证据。 |
 | Specific ACK/recovery fixes / 两项已修复 | Explicit-message ACK embedded-data-URL redaction and legacy v1 delivery-ACK recovery are fixed with regressions in the current suite. / 保留历史投递，不回旧正文、不重发；不宣称所有格式或路径均已覆盖。 |
-| Author's `marked` dual-plugin adapter / 作者双插件 | Actual `legion_bundle` use is confirmed. The original bundle still fails independent official Loader activation because `tools` injection is missing; unrepaired, uninstalled and uncalled. / 包装使用已证实，不冒充原包修复或完整适配通过。 |
-| Author feedback and development references / 作者反馈与开发信息 | Feedback is queued; accepted does not mean consumed or fixed. Exact official skill/reference pointers are now supplied, without automatic injection or rewriting old bundles. / 只补信息，不替作者修复。 |
+| Source retry fix / 来源重试修复 | Same-session/instance/lifetime successful full-commit observations can be reused with original timestamps/hashes and explicit retrieval markers; errors are fetched again, current writes still use current permissions. Independent review **13/13**. / 最后保存的原生包装回执没有新字段，磁盘修复不等于旧 Host 已加载。 |
+| Author's `marked` dual-plugin adapter / 作者双插件 | The author repaired service injection and JSON output. Official rc.2 Loader/ToolRuntime made **20 actual calls: 14 business successes + 6 expected UNKNOWN_TOOL** results after unloading, including both unload orders. / 不代补业务；不是实际 Host 安装或界面开关验收。 |
+| Latest native package readback / 最新原生包读回 | All **17 files** match the successful `legion_bundle` receipt; 3 runtime source files match the executed version. Dependency resolution used local aliases, not a real installation. / `written_not_installed`、`execution_verified:false` 保留，不把读回改成假执行。 |
+| Author feedback and development references / 作者反馈与开发信息 | The two recorded adapter defects were repaired by the author and independently replayed. Official skill/reference pointers remain on demand, without automatic injection or code rewriting by the connector. / 从“反馈已排队”推进到“作者已修改、原反例已恢复”，不外推全部项目。 |
 | Actual task consumption and user experience / 消费与体验 | Not established by execution/delivery receipts; no automatic wake of terminal tasks. / 回执不代表已读或继续工作。 |
 | Public reviewed repository/commit / 公开仓库与提交 | Pending / 未完成 |
 | Public pinned-Git install / 公开固定 Git 安装 | Not performed / 未执行 |
@@ -147,17 +149,18 @@ Keep only this independently written connector and its legitimate dependency dec
 | Code rights, publishing permissions and external-release authorization / 代码权属、发布权限与外发授权 | Still to be confirmed by the publisher; the MIT declaration is not proof of ownership or permission. / 独立新写和复用片段的分发权、账号权限及外发授权仍待确认。 |
 | Final payload, recovery, uninstall and real reverse proxy / 最终包、恢复、卸载与实服反代 | Remain outside the current acceptance claim / 仍不在当前验收声明内 |
 
-The final integrated result is dated **2026-10-27T20:25:16Z (UTC) / 2026-10-28 04:25:16 Asia/Shanghai**. This documentation update reads that saved result and log; it does not rerun tests. Earlier ACK/full-suite snapshots are retained only for traceability, not used as the current total.
+The integrated run was **2026-10-28 04:25:05–04:25:09 UTC / 12:25:05–12:25:09 Asia/Shanghai**. The same-byte source check reuses that saved result rather than claiming a rerun. Separate reviews, adapter calls and package/link checks are not added to its 357-test total. Earlier full-suite snapshots remain for traceability only.
 
 Record only actually executed results, with versions and appropriately redacted evidence. Source compatibility, local smoke, native install/active/called state, model consumption and a useful user result are separate facts. None should be inferred from another.
 
 ## Pinned primary sources / 固定一手来源
 
-These source references reuse the recorded read-only review from **2026-10-27 16:44–16:47 UTC / 2026-10-28 00:44–00:47 Asia/Shanghai**. Its saved comparisons showed no changes to the relevant catalog rules or store installation code. No new online source text was obtained for this documentation update; it relies on saved fixed-source comparisons and local official rc.2 implementation.
+The marketplace references reuse the recorded read-only review from **2026-10-27 16:44–16:47 UTC / 2026-10-28 00:44–00:47 Asia/Shanghai**. Its saved comparisons showed no changes to the relevant catalog rules or store installation code. Separately, the fixed official `SAFETY.md` body and Git blob were verified on **2026-10-28 04:46:03 UTC**. That one-source check is not a new review of all marketplace rules or any live deployment.
 
-本次复用已有固定来源、提交对比和本地官方 rc.2；没有新增在线正文核验，不称为所有线上实例的最新行为。本文 JSON 示例的双语说明已与现有本地草稿逐字对齐，草稿本身未改、未投稿；旧离线目录检查仅作追溯，本次不重跑目录审查。正式投稿前另核届时的 `main`、实际日期与最终文稿。
+市场规则继续使用已有固定来源、提交对比和本地官方 rc.2；只新增核实官方固定 `SAFETY.md` 的有效正文，不称为所有线上实例的最新行为。本文 JSON 示例的双语说明沿用已对齐的本地草稿，草稿本身未改、未投稿；旧离线目录检查仅作追溯，不冒充新跑目录审查。正式投稿前另核届时的 `main`、实际日期与最终文稿。
 
 - [Official package/install guide](https://github.com/deepseek-ai/deepseek-harness/blob/22ddee3792402c3e70ec5f86a63c3e3e895a2f60/docs/user/develop/basic/publish.md)
+- [Official safety statement](https://github.com/deepseek-ai/deepseek-harness/blob/22ddee3792402c3e70ec5f86a63c3e3e895a2f60/SAFETY.md) — the verified 1,673-byte body still describes an experimental, unaudited developer preview; see [Security](SECURITY.md) for its hash and scope.
 - [Official experimental market bundle](https://github.com/deepseek-ai/deepseek-harness/blob/22ddee3792402c3e70ec5f86a63c3e3e895a2f60/packages/experimental/plugin-market-bundle/README.md)
 - [Official index format and hosting](https://github.com/deepseek-ai/deepseek-harness/blob/22ddee3792402c3e70ec5f86a63c3e3e895a2f60/docs/user/guide/plugin-market.md)
 - [Official Git-spec parser](https://github.com/deepseek-ai/deepseek-harness/blob/22ddee3792402c3e70ec5f86a63c3e3e895a2f60/packages/boot/plugin-manager/src/install-spec.ts#L21-L91)

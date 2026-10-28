@@ -1,5 +1,8 @@
 import test from 'node:test'
 import assert from 'node:assert/strict'
+import { createHash } from 'node:crypto'
+import { homedir } from 'node:os'
+import { join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { Context } from '@deepseek-ai/cordis'
 import { SystemPrompt } from '@deepseek-ai/dsh-system-prompt'
@@ -41,14 +44,22 @@ async function runtime(t, fetchImpl, config = {}) {
   agent.ctx = scope.ctx
   const cancellation = new AbortController()
   const lifecycle = new AbortController()
-  registerEcosystem(ctx, {}, config, lifecycle.signal)
-  t.after(async () => { await scope.dispose(); await owner.dispose(); await tools.dispose(); await prompt.dispose() })
+  const extension = ctx.inject(['tools'], injected => registerEcosystem(injected, {}, config, lifecycle.signal))
+  await extension
+  t.after(async () => {
+    lifecycle.abort()
+    await extension.dispose()
+    await scope.dispose()
+    await owner.dispose()
+    await tools.dispose()
+    await prompt.dispose()
+  })
   let callId = 0
   const call = (args = {}, overrides = {}) => ctx.tools.execute({
     name: 'legion_source', arguments: { action: 'inspect', repository: REPOSITORY, ...args },
     agent, signal: cancellation.signal, callId: `source-error-${++callId}`, ...overrides,
   })
-  return { ctx, agent, call, cancellation, lifecycle, requests }
+  return { ctx, agent, call, cancellation, lifecycle, extension, requests }
 }
 
 test('native legion_source HTTP403 retains safe reset facts in the failed model-facing result', async t => {
@@ -234,8 +245,8 @@ function bundleArguments(overrides = {}) {
   }
 }
 
-const callBundle = (f, args = {}) => f.call({}, {
-  name: 'legion_bundle', arguments: bundleArguments(args),
+const callBundle = (f, args = {}, overrides = {}) => f.call({}, {
+  name: 'legion_bundle', arguments: bundleArguments(args), ...overrides,
 })
 
 // A bounded public snapshot without optional previews. The extra source read
@@ -434,4 +445,400 @@ test('native legion_bundle keeps nonfatal partial provenance without inventing a
   assert.equal(source.errors[0].status, 503)
   assert.doesNotMatch(provenance.content, /LICENSE_RESPONSE_SECRET/)
   assert.equal(f.requests.length, 4)
+})
+
+test('native bundle retries a partial write with its pinned source facts, not another GitHub request', async t => {
+  let sourceAvailable = true
+  let failLastWrite = true
+  const source = pinnedSourceFixture()
+  const f = await runtime(t, url => sourceAvailable
+    ? source(url)
+    : new Response('rate limit after the first source inspection', { status: 403, headers: RATE_HEADERS }))
+  const writes = nativeWriteFixture(f, args => {
+    if (failLastWrite && args.file_path.endsWith('/zz-final.js')) {
+      failLastWrite = false
+      throw new HarnessError('last native write refused', 'WRITE_DENIED')
+    }
+    return { written: true }
+  })
+  const args = bundleArguments()
+  args.spec.files.push({ path: 'zz-final.js', content: 'export const final = true\n' })
+  const first = await callBundle(f, args)
+  assert.equal(first.isError, true)
+  assert.match(modelText(first), /Already written \(not rolled back\)/)
+  assert.equal(f.requests.length, 6)
+  const firstFacts = JSON.parse(writes.find(file => file.file_path.endsWith('/provenance.json')).content)
+  assert.ok(firstFacts[0].fetched_at)
+  const writeOffset = writes.length
+
+  sourceAvailable = false
+  const retried = await callBundle(f, args)
+  assert.equal(retried.isError, false, modelText(retried))
+  assert.equal(retried.value.state, 'written_not_installed')
+  assert.equal(retried.value.source_retrieval, 'reused_pinned_facts')
+  assert.equal(f.requests.length, 6, 'Only the first inspection should reach GitHub')
+  const rewritten = writes.slice(writeOffset)
+  assert.equal(rewritten.length, retried.value.files.length, 'A retry still performs every native write')
+  const retryFacts = JSON.parse(rewritten.find(file => file.file_path.endsWith('/provenance.json')).content)
+  assert.deepEqual(retryFacts, firstFacts.map(fact => ({ ...fact, retrieval: 'reused_pinned_facts' })))
+  assert.equal(firstFacts[0].retrieval, 'fetched')
+  assert.equal(retried.value.hash_kind, 'expected_written_content_not_independent_readback')
+  assert.equal(retried.value.execution_verified, false)
+})
+
+// Source transport fixtures, not inspection stubs: the real GitHubSources still
+// validates repository/commit/tree/blob identity, UTF-8, previews and diagnostics.
+function pinnedSourceFixture({ licenseText = 'Source fixture license text; not a permission grant.\n',
+  moduleText = 'export const sample = true\n', licenseStatus = 200, truncated = false } = {}) {
+  const files = new Map([['LICENSE', licenseText], ['module.js', moduleText]].map(([path, content]) => {
+    const bytes = Buffer.from(content)
+    const sha = createHash('sha1').update(`blob ${bytes.length}\0`).update(bytes).digest('hex')
+    return [path, { path, bytes, sha }]
+  }))
+  return rawUrl => {
+    const url = new URL(rawUrl)
+    const match = /^\/repos\/([^/]+\/[^/]+)(?:\/(.*))?$/u.exec(url.pathname)
+    assert.ok(match, `Unexpected source fixture route: ${url.pathname}`)
+    const [, repository, route] = match
+    if (!route) return Response.json({ private: false, full_name: repository, default_branch: 'main' })
+    if (route.startsWith('commits/')) {
+      const ref = decodeURIComponent(route.slice('commits/'.length))
+      return Response.json({
+        sha: /^[a-f\d]{40}$/iu.test(ref) ? ref.toLowerCase() : COMMIT,
+        commit: { tree: { sha: TREE } },
+      })
+    }
+    if (route === `git/trees/${TREE}`) return Response.json({
+      sha: TREE, truncated,
+      tree: [...files.values()].map(file => ({
+        path: file.path, type: 'blob', mode: '100644', sha: file.sha, size: file.bytes.length,
+      })),
+    })
+    if (route === 'license') {
+      if (licenseStatus !== 200) return new Response('untrusted license error', { status: licenseStatus })
+      const file = files.get('LICENSE')
+      return Response.json({ path: file.path, sha: file.sha, size: file.bytes.length, license: null })
+    }
+    if (route.startsWith('git/blobs/')) {
+      const file = [...files.values()].find(value => route === `git/blobs/${value.sha}`)
+      assert.ok(file, `Unknown fixture blob: ${route}`)
+      return Response.json({
+        sha: file.sha, size: file.bytes.length, encoding: 'base64', content: file.bytes.toString('base64'),
+      })
+    }
+    assert.fail(`Unexpected source fixture route: ${url.pathname}`)
+  }
+}
+
+const writtenFacts = writes => JSON.parse(writes.findLast(file => file.file_path.endsWith('/provenance.json')).content)
+
+test('native bundle does not retain a nested license error as an error-free source observation', async t => {
+  // GitHub's license 404 is retained in license.error, not top-level errors.
+  const f = await runtime(t, bundleSourceResponse)
+  const writes = nativeWriteFixture(f)
+  for (let attempt = 0; attempt < 2; attempt++) {
+    const result = await callBundle(f)
+    assert.equal(result.isError, false, 'An unknown license is not a packaging quality gate')
+    const [source] = writtenFacts(writes)
+    assert.equal(source.status, 'inspected')
+    assert.deepEqual(source.errors, [])
+    assert.equal(source.license.error.status, 404)
+    assert.equal(result.value.source_retrieval, 'fetched')
+  }
+  assert.equal(f.requests.length, 8, 'An inspection with a nested error is fetched again')
+})
+
+test('native bundle retains truncated observations, original timestamps and whole-file hashes honestly', async t => {
+  const moduleText = '中文 source\n'.repeat(1800)
+  const f = await runtime(t, pinnedSourceFixture({ moduleText, truncated: true }))
+  const writes = nativeWriteFixture(f)
+  const args = { source_refs: [{ repository: REPOSITORY, ref: COMMIT, paths: ['module.js'] }] }
+  const first = await callBundle(f, args)
+  assert.equal(first.isError, false, modelText(first))
+  const [original] = writtenFacts(writes)
+  assert.equal(original.truncated, true)
+  assert.equal(original.status, 'inspected')
+  assert.equal(original.files[0].truncated, true)
+  assert.equal(original.files[0].total_bytes, Buffer.byteLength(moduleText))
+  assert.equal(original.files[0].sha256, createHash('sha256').update(moduleText).digest('hex'))
+  assert.ok(original.files[0].source.fetched_at)
+  const count = f.requests.length
+  const retry = await callBundle(f, args)
+  assert.equal(retry.isError, false, modelText(retry))
+  assert.equal(retry.value.source_retrieval, 'reused_pinned_facts')
+  assert.equal(f.requests.length, count)
+  assert.deepEqual(writtenFacts(writes), [{ ...original, retrieval: 'reused_pinned_facts' }])
+  assert.equal(retry.value.execution_verified, false)
+})
+
+test('native bundle keeps pinned facts within the requesting native agent scope', async t => {
+  const f = await runtime(t, pinnedSourceFixture())
+  const writes = nativeWriteFixture(f)
+  const first = await callBundle(f)
+  assert.equal(first.isError, false, modelText(first))
+  const otherAgent = { id: 'another-real-native-agent-scope' }
+  let otherScope
+  const owner = f.ctx.inject(['tools'], injected => { otherScope = createScope(injected, otherAgent) })
+  await owner
+  otherAgent.ctx = otherScope.ctx
+  t.after(async () => { await otherScope.dispose(); await owner.dispose() })
+  const other = await callBundle(f, {}, { agent: otherAgent })
+  assert.equal(other.isError, false, modelText(other))
+  assert.equal(other.value.source_retrieval, 'fetched')
+  assert.equal(f.requests.length, 12)
+  const again = await callBundle(f)
+  assert.equal(again.value.source_retrieval, 'reused_pinned_facts')
+  assert.equal(f.requests.length, 12)
+  assert.ok(writes.length > 0)
+})
+
+for (const ref of [undefined, 'main', 'v1.0.0', 'aaaaaaa']) {
+  test(`native bundle re-resolves ${ref ?? 'the default branch'} instead of retaining a movable source ref`, async t => {
+    const f = await runtime(t, pinnedSourceFixture())
+    nativeWriteFixture(f)
+    const args = { source_refs: [{ repository: REPOSITORY, ...(ref === undefined ? {} : { ref }) }] }
+    for (let attempt = 0; attempt < 2; attempt++) {
+      const result = await callBundle(f, args)
+      assert.equal(result.isError, false, modelText(result))
+      assert.equal(result.value.source_retrieval, 'fetched')
+    }
+    assert.equal(f.requests.length, 12)
+  })
+}
+
+for (const change of ['repository', 'commit', 'paths']) {
+  test(`native bundle gets new facts when the source ${change} changes`, async t => {
+    const f = await runtime(t, pinnedSourceFixture())
+    const writes = nativeWriteFixture(f)
+    assert.equal((await callBundle(f)).isError, false)
+    const reference = { repository: REPOSITORY, ref: COMMIT }
+    if (change === 'repository') reference.repository = 'octocat/other-source'
+    if (change === 'commit') reference.ref = 'd'.repeat(40)
+    if (change === 'paths') reference.paths = ['module.js']
+    const changed = await callBundle(f, { source_refs: [reference] })
+    assert.equal(changed.isError, false, modelText(changed))
+    assert.equal(changed.value.source_retrieval, 'fetched')
+    assert.ok(f.requests.length > 6)
+    const [source] = writtenFacts(writes)
+    assert.equal(source.repository, reference.repository)
+    assert.equal(source.commit, reference.ref)
+    assert.equal(source.files.length, reference.paths?.length ?? 0)
+    const count = f.requests.length
+    assert.equal((await callBundle(f)).value.source_retrieval, 'reused_pinned_facts')
+    assert.equal(f.requests.length, count, 'New references do not overwrite another source key')
+  })
+}
+
+test('native bundle retries partial inspections without blocking author packaging', async t => {
+  const f = await runtime(t, pinnedSourceFixture({ licenseStatus: 503 }))
+  const writes = nativeWriteFixture(f)
+  for (let attempt = 0; attempt < 2; attempt++) {
+    const result = await callBundle(f)
+    assert.equal(result.isError, false, modelText(result))
+    assert.equal(result.value.source_retrieval, 'fetched')
+    assert.equal(writtenFacts(writes)[0].status, 'partial')
+  }
+  assert.equal(f.requests.length, 12)
+})
+
+test('native bundle never retains a failed or incomplete group of source references', async t => {
+  const source = pinnedSourceFixture()
+  let laterAvailable = false
+  const f = await runtime(t, url => new URL(url).pathname === '/repos/octocat/later-source' && !laterAvailable
+    ? new Response('not available', { status: 503 }) : source(url))
+  const writes = nativeWriteFixture(f)
+  const args = { source_refs: [
+    { repository: REPOSITORY, ref: COMMIT }, { repository: 'octocat/later-source', ref: COMMIT },
+  ] }
+  assert.equal((await callBundle(f, args)).isError, true)
+  assert.equal(writes.length, 0)
+  assert.equal(f.requests.length, 7)
+  laterAvailable = true
+  const retry = await callBundle(f, args)
+  assert.equal(retry.isError, false, modelText(retry))
+  assert.equal(retry.value.source_retrieval, 'fetched')
+  assert.equal(f.requests.length, 19, 'Both source observations are acquired after the failed group')
+  assert.equal(writtenFacts(writes).length, 2)
+})
+
+test('native bundle cache hit still validates and writes the current adapter and destination', async t => {
+  const f = await runtime(t, pinnedSourceFixture())
+  const writes = nativeWriteFixture(f)
+  assert.equal((await callBundle(f)).isError, false)
+  const before = writes.length
+  const invalid = bundleArguments()
+  invalid.spec.plugins[0].entry = 'missing.js'
+  assert.equal((await callBundle(f, invalid)).isError, true)
+  const profile = await callBundle(f, { directory: join(process.env.DSH_HOME || join(homedir(), '.dsh'), 'not-a-workspace') })
+  assert.equal(profile.isError, true)
+  assert.match(modelText(profile), /ordinary workspace/)
+  assert.equal((await callBundle(f, { directory: 'relative-directory' })).isError, true)
+  assert.equal(writes.length, before, 'Bad new input may not replay the old write or old success')
+  const changed = bundleArguments({ directory: `${BUNDLE_DIRECTORY}-changed` })
+  changed.spec.files[0].content = 'export const changed = true\n'
+  const retry = await callBundle(f, changed)
+  assert.equal(retry.isError, false, modelText(retry))
+  assert.equal(retry.value.source_retrieval, 'reused_pinned_facts')
+  const current = writes.slice(before)
+  assert.equal(current.length, retry.value.files.length)
+  assert.ok(current.every(file => file.file_path.startsWith(`${BUNDLE_DIRECTORY}-changed/`)))
+  assert.equal(current.find(file => file.file_path.endsWith('/index.js')).content, changed.spec.files[0].content)
+  assert.equal(f.requests.length, 6)
+})
+
+for (const kind of ['outer guard', 'write guard', 'outer post-execute', 'write post-execute']) {
+  test(`native bundle cache cannot bypass the current ${kind}`, async t => {
+    const f = await runtime(t, pinnedSourceFixture())
+    const writes = nativeWriteFixture(f)
+    assert.equal((await callBundle(f)).isError, false)
+    const before = writes.length
+    const name = kind.startsWith('outer') ? 'legion_bundle' : 'write'
+    if (kind.endsWith('guard')) {
+      f.ctx.tools.guard(exec => exec.name === name ? 'current native policy denied' : undefined)
+    } else {
+      f.ctx.on('tools/post-execute', async (exec, _result, next) => exec.name === name
+        ? { kind: 'block', feedback: [{ type: 'text', text: 'current native policy withheld output' }] }
+        : next())
+    }
+    const retry = await callBundle(f)
+    assert.equal(retry.isError, true)
+    assert.equal(Object.hasOwn(retry, 'value'), false)
+    assert.match(modelText(retry), /current native policy/)
+    assert.doesNotMatch(JSON.stringify(retry), /reused_pinned_facts|Source fixture license text/)
+    assert.equal(f.requests.length, 6)
+    if (kind.endsWith('guard')) assert.equal(writes.length, before)
+    if (kind === 'write post-execute') {
+      assert.equal(writes.length, before + 1, 'Post-execute denial is not a disk rollback')
+      assert.match(modelText(retry), /Already written \(not rolled back\)/)
+    }
+  })
+}
+
+for (const kind of ['cancellation', 'lifecycle']) {
+  test(`native bundle ${kind} abort wins over a populated pinned-fact cache`, async t => {
+    const f = await runtime(t, pinnedSourceFixture())
+    const writes = nativeWriteFixture(f)
+    assert.equal((await callBundle(f)).isError, false)
+    const before = writes.length
+    f[kind].abort(new DOMException('fixture abort', 'AbortError'))
+    assert.equal((await callBundle(f)).isError, true)
+    assert.equal(writes.length, before)
+    assert.equal(f.requests.length, 6)
+  })
+}
+
+test('native bundle plugin disposal and replacement do not inherit the previous pinned facts', async t => {
+  const f = await runtime(t, pinnedSourceFixture())
+  nativeWriteFixture(f)
+  assert.equal((await callBundle(f)).value.source_retrieval, 'fetched')
+  f.lifecycle.abort()
+  await f.extension.dispose()
+  assert.equal((await callBundle(f)).error.info.code, 'UNKNOWN_TOOL')
+  const lifecycle = new AbortController()
+  const next = f.ctx.inject(['tools'], ctx => registerEcosystem(ctx, {}, {}, lifecycle.signal))
+  await next
+  t.after(async () => { lifecycle.abort(); await next.dispose() })
+  const retry = await callBundle(f)
+  assert.equal(retry.isError, false, modelText(retry))
+  assert.equal(retry.value.source_retrieval, 'fetched')
+  assert.equal(f.requests.length, 12)
+})
+
+test('native bundle cancellation on the last source response leaves no reusable observations', async t => {
+  const source = pinnedSourceFixture()
+  let cancel = true
+  const f = await runtime(t, url => {
+    const response = source(url)
+    if (cancel && new URL(url).pathname.includes('/git/blobs/')) {
+      cancel = false
+      queueMicrotask(() => f.cancellation.abort(new DOMException('last response cancelled', 'AbortError')))
+    }
+    return response
+  })
+  const writes = nativeWriteFixture(f)
+  assert.equal((await callBundle(f)).isError, true)
+  assert.equal(writes.length, 0)
+  assert.equal(f.requests.length, 6)
+  const retry = await callBundle(f, {}, { signal: new AbortController().signal })
+  assert.equal(retry.isError, false, modelText(retry))
+  assert.equal(retry.value.source_retrieval, 'fetched')
+  assert.equal(f.requests.length, 12)
+})
+
+test('native bundle agent visibility and identity remain authoritative after source facts were retained', async t => {
+  const f = await runtime(t, pinnedSourceFixture())
+  const writes = nativeWriteFixture(f)
+  assert.equal((await callBundle(f)).isError, false)
+  const before = writes.length
+  const agentless = await callBundle(f, {}, { agent: undefined })
+  assert.equal(agentless.isError, true)
+  assert.match(modelText(agentless), /会话/)
+  f.agent.ctx.tools.restrict({ deny: ['legion_bundle'] })
+  const hidden = await callBundle(f)
+  assert.equal(hidden.isError, true)
+  assert.equal(hidden.error.info.code, 'UNKNOWN_TOOL')
+  assert.equal(writes.length, before)
+  assert.equal(f.requests.length, 6)
+})
+
+test('native bundle overlapping calls do not share adapter code, destinations or mutable source results', async t => {
+  const f = await runtime(t, pinnedSourceFixture())
+  const writes = nativeWriteFixture(f)
+  const argsFor = id => {
+    const args = bundleArguments({ directory: `${BUNDLE_DIRECTORY}-${id}` })
+    args.spec.files[0].content = `export const call = '${id}'\n`
+    return args
+  }
+  const results = await Promise.all(['one', 'two'].map(id => callBundle(f, argsFor(id))))
+  for (const [index, id] of ['one', 'two'].entries()) {
+    assert.equal(results[index].isError, false, modelText(results[index]))
+    const current = writes.filter(file => file.file_path.startsWith(`${BUNDLE_DIRECTORY}-${id}/`))
+    assert.equal(current.length, results[index].value.files.length)
+    assert.equal(current.find(file => file.file_path.endsWith('/index.js')).content, argsFor(id).spec.files[0].content)
+    const [source] = writtenFacts(current)
+    assert.equal(source.repository, REPOSITORY)
+    assert.equal(source.commit, COMMIT)
+    assert.equal(source.retrieval, results[index].value.source_retrieval)
+  }
+  const count = f.requests.length
+  const third = await callBundle(f, argsFor('three'))
+  assert.equal(third.isError, false, modelText(third))
+  assert.equal(third.value.source_retrieval, 'reused_pinned_facts')
+  assert.equal(f.requests.length, count)
+  assert.equal(writes.find(file => file.file_path === `${BUNDLE_DIRECTORY}-three/index.js`).content, argsFor('three').spec.files[0].content)
+})
+
+test('native bundle uses access-order eviction after sixteen pinned-source entries', async t => {
+  const f = await runtime(t, pinnedSourceFixture())
+  nativeWriteFixture(f)
+  const argsFor = index => ({ source_refs: [{ repository: `octocat/lru-${index}`, ref: COMMIT }] })
+  for (let index = 0; index < 16; index++) {
+    assert.equal((await callBundle(f, argsFor(index))).value.source_retrieval, 'fetched')
+  }
+  assert.equal(f.requests.length, 96)
+  assert.equal((await callBundle(f, argsFor(0))).value.source_retrieval, 'reused_pinned_facts')
+  assert.equal((await callBundle(f, argsFor(16))).value.source_retrieval, 'fetched')
+  assert.equal((await callBundle(f, argsFor(0))).value.source_retrieval, 'reused_pinned_facts')
+  assert.equal((await callBundle(f, argsFor(1))).value.source_retrieval, 'fetched', 'The least recently used entry, not the first added, expires')
+  assert.equal(f.requests.length, 108)
+})
+
+test('native bundle evicts serialized source observations at one MiB even below sixteen entries', async t => {
+  // Tabs are valid UTF-8 text but double in JSON, exercising serialized rather
+  // than input byte accounting. These are transport fixtures, not real licenses.
+  const f = await runtime(t, pinnedSourceFixture({ licenseText: '\t'.repeat(12000) }))
+  const writes = nativeWriteFixture(f)
+  const argsFor = index => ({ source_refs: Array.from({ length: 4 }, (_, part) => ({
+    repository: `octocat/byte-limit-${index}-${part}`, ref: COMMIT,
+  })) })
+  let observedBytes = 0
+  for (let index = 0; index < 11; index++) {
+    const result = await callBundle(f, argsFor(index))
+    assert.equal(result.isError, false, modelText(result))
+    const facts = writtenFacts(writes).map(({ retrieval, ...source }) => source)
+    observedBytes += Buffer.byteLength(JSON.stringify(facts)) + 64
+  }
+  assert.ok(observedBytes > 1024 * 1024, 'The fixture actually crosses the serialized size limit')
+  assert.equal((await callBundle(f, argsFor(10))).value.source_retrieval, 'reused_pinned_facts')
+  assert.equal((await callBundle(f, argsFor(0))).value.source_retrieval, 'fetched', 'The byte limit evicts before the entry-count limit')
 })
