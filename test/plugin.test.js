@@ -12,7 +12,7 @@ import { GitHubSources } from '../lib/sources.js'
 import { SkillRegistry } from '@deepseek-ai/dsh-skill'
 
 const methods = ['submit', 'list', 'status', 'message', 'resume', 'cancel', 'download']
-const names = [...methods, 'discover', 'source', 'bundle', 'call'].map(method => `legion_${method}`).sort()
+const names = [...methods, 'runtime', 'discover', 'source', 'bundle', 'call'].map(method => `legion_${method}`).sort()
 const taskRef = 'a'.repeat(32)
 const artifactId = 'b'.repeat(32)
 const isolatedConfig = {
@@ -69,7 +69,7 @@ function recordClient(t, overrides = {}) {
 test('Config is real Schemastery, fills defaults, and leaves baseUrl available for the environment fallback', async () => {
   const { Config } = await loadPlugin()
   assert.equal(typeof Config['~standard']?.validate, 'function')
-  const config = Config({})
+  const config = Config({}).get()
   assert.equal(config.baseUrl, undefined)
   assert.equal(config.candidateHarnesses, undefined)
   assert.equal(config.tokenEnv, 'LEGION_PERSONAL_TOKEN')
@@ -78,13 +78,44 @@ test('Config is real Schemastery, fills defaults, and leaves baseUrl available f
   assert.equal(config.maxArtifactBytes, 50 * 1024 * 1024)
   assert.equal(config.maxEvents, 100)
   assert.ok(!Object.hasOwn(config, 'lifecycleSignal'))
-  assert.deepEqual(Config['~standard'].validate({}).value, config)
+  assert.deepEqual(Config['~standard'].validate({}).value.get(), config)
+})
+
+test('Config accepts a private tokenFile path without exposing inline credentials', async () => {
+  const { Config } = await loadPlugin()
+  assert.equal(Config({ tokenFile: '/private/fixture/login-token.txt' }).get().tokenFile, '/private/fixture/login-token.txt')
+  for (const tokenFile of ['', 'relative/token', 1, null, '/tmp/a\0b', '/tmp/../secret']) {
+    assert.throws(() => Config({ tokenFile }))
+  }
+})
+
+test('runtime is a real native tool and filters authority from model arguments', async t => {
+  const plugin = await loadPlugin()
+  const { ctx, install } = await host(t)
+  assert.equal(typeof LegionClient.prototype.runtime, 'function')
+  let call
+  t.mock.method(LegionClient.prototype, 'runtime', async (args, execution) => {
+    call = { args, execution }
+    return { runtime: { installed: false }, verification: 'service_observation_only_no_execution' }
+  })
+  await install(plugin, isolatedConfig)
+  const schema = ctx.tools.schemas().find(item => item.name === 'legion_runtime')
+  assert.ok(schema, 'DSH must discover the registered runtime tool')
+  assert.ok(!Object.hasOwn(schema.parameters.properties, 'tokenFile'))
+  const signal = new AbortController().signal
+  const agent = { id: 'runtime-agent', ctx }
+  const result = await ctx.tools.execute({ callId: 'runtime-call', name: 'legion_runtime',
+    arguments: { view: 'members', tokenFile: '/untrusted/model-token', force: true }, agent, signal })
+  assert.equal(result.isError, false, JSON.stringify(result))
+  assert.deepEqual(call.args, { view: 'members' })
+  assert.equal(call.execution.sessionId, agent.id)
+  assert.equal(call.execution.signal, signal)
 })
 
 test('Config accepts explicit candidate lists without defaulting, sorting or silently fixing invalid entries', async () => {
   const { Config } = await loadPlugin()
-  assert.deepEqual(Config({ candidateHarnesses: [] }).candidateHarnesses, [])
-  assert.deepEqual(Config({ candidateHarnesses: ['generic-reviewer', 'generic-member'] }).candidateHarnesses,
+  assert.deepEqual(Config({ candidateHarnesses: [] }).get().candidateHarnesses, [])
+  assert.deepEqual(Config({ candidateHarnesses: ['generic-reviewer', 'generic-member'] }).get().candidateHarnesses,
     ['generic-reviewer', 'generic-member'])
   for (const candidateHarnesses of [
     null, 'generic-member', {}, [null], [1], [''], [' '], [' generic-member'],
@@ -113,9 +144,9 @@ test('Config rejects bad types, unsafe URLs, inline credentials and model-owned 
     assert.throws(() => Config(invalid), undefined, `Invalid configuration keys: ${Object.keys(invalid)}`)
   }
   for (const baseUrl of ['http://localhost:8000', 'http://[::1]:8000', 'https://example.test/legion']) {
-    assert.equal(Config({ baseUrl }).baseUrl, baseUrl)
+    assert.equal(Config({ baseUrl }).get().baseUrl, baseUrl)
   }
-  assert.equal(Config({ projectBindingFile: '/fixture/authorized-project.json' }).projectBindingFile,
+  assert.equal(Config({ projectBindingFile: '/fixture/authorized-project.json' }).get().projectBindingFile,
     '/fixture/authorized-project.json')
   try {
     Config({ token: 'fixture-secret' })

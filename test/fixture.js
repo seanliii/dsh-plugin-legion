@@ -5,7 +5,7 @@ import { createHash } from 'node:crypto'
 export async function fixture(t, options = {}) {
   const teams = new Map()
   const requests = []
-  const bytes = Buffer.from('fixture artifact, not a model-generated deliverable\n')
+  const bytes = Buffer.from(options.artifactBytes ?? 'fixture artifact, not a model-generated deliverable\n')
   const sha256 = createHash('sha256').update(bytes).digest('hex')
   let messageCount = 0
   let resumeCount = 0
@@ -14,7 +14,7 @@ export async function fixture(t, options = {}) {
     for await (const chunk of req) raw += chunk
     const body = raw ? JSON.parse(raw) : {}
     const url = new URL(req.url, 'http://fixture.test')
-    requests.push({ method: req.method, path: url.pathname, body, headers: req.headers })
+    requests.push({ method: req.method, path: url.pathname, search: url.search, body, headers: req.headers })
     const prefix = options.prefix || ''
     const path = prefix && url.pathname.startsWith(`${prefix}/`)
       ? url.pathname.slice(prefix.length) : url.pathname
@@ -74,9 +74,12 @@ export async function fixture(t, options = {}) {
     if (path === '/api/legion/cancel') {
       send({ ok: true, team_id: body.team_id, cancelled: true, reason: 'cancellation requested' }); return
     }
-    if (path === '/outputs/result.txt') {
-      res.writeHead(200, { 'Content-Type': 'text/plain' })
-      res.end(options.badArtifact ? 'wrong bytes' : bytes); return
+    if (path === (options.artifactPath || '/outputs/result.txt')) {
+      const preview = options.previewArtifact && url.searchParams.get('download') !== '1'
+      res.writeHead(200, { 'Content-Type': options.previewArtifact ? 'text/html' : 'text/plain' })
+      res.end(options.badArtifact ? 'wrong bytes'
+        : preview ? Buffer.concat([bytes, Buffer.from('<script>/* preview only */</script>')]) : bytes)
+      return
     }
     send({ error: 'not found' }, 404)
   })

@@ -1,6 +1,6 @@
 # Protocol / 协议
 
-本页描述 **Legion Bridge 0.2.0** 的代码契约，不保证所有 Legion 部署都实现相同 API。DSH 保留主循环和工具决策；连接器不增设调度器或质量裁判。入门见 [English](../README.md)／[中文](../README.zh-CN.md)，实装与发布进度只在[状态表](PLAN.md)维护。
+本页描述 **Legion 0.3.0** 的连接器代码契约，不保证所有 Legion 部署都实现相同 API。DSH 保留主循环和工具决策；连接器不增设调度器或质量裁判。入门见 [English](../README.md)／[中文](../README.zh-CN.md)，独立程序见[核心说明](CORE.md)，实装与发布进度只在[状态表](PLAN.md)维护。
 
 ## 1. Runtime and native tools
 
@@ -13,13 +13,14 @@
 
 ## 2. Model tools and commands
 
-共 **11 个模型工具**；调用身份由 Host 提供，不由模型参数指定。发现、读公开源和包装无需 Legion token；其余任务协作需要个人服务与授权，包含不发 HTTP 的 `legion_call`。
+共 **12 个模型工具**；调用身份由 Host 提供，不由模型参数指定。发现、读公开源和包装无需 Legion token；其余服务查询与任务协作需要个人服务与授权，包含不发 HTTP 的 `legion_call`。
 
 | 工具 | 必填 | 可选 |
 |---|---|---|
 | `legion_discover` | 无 | `query`, `source`, `limit`, `offset`, `index_url` |
 | `legion_source` | `action`, `repository`；`read` 还需 `commit`, `path` | inspect 的 `ref`；read 的 `offset`, `limit` |
 | `legion_bundle` | `directory`, `spec`, `source_refs` | 对象内可选项见第 5 节 |
+| `legion_runtime` | 无 | `view`: `members`（默认）、`capabilities`、`catalog` |
 | `legion_call` | `task_ref`, `recipient`, `operation_key`, `tool_name`, `arguments` | 无 |
 | `legion_submit` | `key`, `query` | `context`, `previous_task_ref`, `tool_names` |
 | `legion_list` | 无 | 无 |
@@ -33,6 +34,7 @@
 
 ```text
 /legion help
+/legion runtime [members|capabilities|catalog]
 /legion start <key> <task>
 /legion list
 /legion status <ref> [cursor]
@@ -44,6 +46,12 @@
 ```
 
 `status` 命令的 cursor 是事件游标；消息游标用模型工具参数。引用必须明确，不支持 `latest` 或命令附件。命令成功、工具执行和远端任务完成不是同一观察。
+
+### Service runtime observations
+
+`legion_runtime`／`/legion runtime` 只读现有 `/api/legion/harnesses`、`/api/legion/capabilities` 或 `/api/legion/catalog`。返回 `view`、`source`、`observed_at`、脱敏且有界的 `runtime`、`projection`，以及 `verification: "service_observation_only_no_execution"`。
+
+保留服务提供的 `warming`、`stale`、`errors`、`provider_verified` 等事实，不把注册、可安装、已配置改成已验证。`observed_at` 是本次读取时间，不刷新服务内旧记录的时间。查询失败走失败通道，不生成“成功但空”的清单。此工具不安装、不主动强制探活、不发模型任务；服务自身端点的正常缓存行为仍由服务实现。
 
 ## 3. Capability discovery
 
@@ -171,6 +179,7 @@ v1 没有祖先证据，旧成功不能确认原生成功，旧正文不回放�
 |---|---|
 | `baseUrl` | `LEGION_BASE_URL` → 回环 8000 端口；不启动服务。远端 HTTPS，HTTP 仅回环；拒绝 URL 凭据／query／fragment。 |
 | `tokenEnv` | 默认 `LEGION_PERSONAL_TOKEN`，仅为 Host 环境变量**名称**。 |
+| `tokenFile` | 可选本机绝对路径；设置后优先于 `tokenEnv`，失败不回退。每次请求重读，最多 4096 字节；本人所有、无 group/world 权限、单硬链接的普通文件。 |
 | `stateDirectory` | `DSH_LEGION_STATE_DIR` → `DSH_HOME` 或用户 `.dsh` 下的 `legion-state`；相对路径基于 Host 工作目录。选私有目录并保留恢复记录。 |
 | `candidateHarnesses` | 用户选定有序数组；非空传 `plan.team_policy.candidate_harnesses`，省略／`[]` 不传 plan，`null` 拒绝。无连接器默认成员或兜底。 |
 | `projectBindingFile` | 绝对路径 JSON，至多 16 KiB，仅含 `workspace_root`：运营者已授权的绝对目录。不上传工作区、不授予新权限。 |
@@ -180,6 +189,10 @@ v1 没有祖先证据，旧成功不能确认原生成功，旧正文不回放�
 | `maxEvents` | 默认 100，范围 1–500；状态事件和来信分页上限。 |
 
 API 保留配置的服务路径前缀；实际反代仍需部署者验证。project binding 成为 `project_context`，不让模型另选授权目录。
+
+令牌文件拒绝末级文件及其直接父目录的符号链接、目录或其它非普通文件、空值、多行／非法 HTTP 头字符以及读取期间变化；这不是对任意祖先目录或整台主机的安全认证。实际使用过的新旧值仅在进程内加入脱敏，不保存到恢复索引。提交前读取配置，缺失凭据不占用新的派单键。
+
+独立核心 `meyo.py dsh-config --state-dir <实例>` 复用实例配置与登录身份检查，返回 `{plugin, config:{baseUrl,tokenFile}, verification:"configuration_only_no_model_request"}`。不打印令牌、不改环境／Host profile、不联网；返回配置不等于服务启动或模型可用。路径必须能由 DSH 所在的主机和 OS 用户读取。
 
 ## 8. Task lifecycle and mailbox
 

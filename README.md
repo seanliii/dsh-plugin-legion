@@ -1,12 +1,22 @@
-# Legion Bridge
+# Legion · One assistant, an ecosystem of capabilities
 
 English | [简体中文](README.zh-CN.md)
 
-Bring open-source capabilities into **DeepSeek Harness (DSH)**, with optional collaboration through your own Legion service. `dsh-plugin-legion` **0.2.0** helps DSH find tools, read public source at a fixed commit, and package author-adapted code as independently switchable plugins in one bundle.
+Express what you want once. DSH can discover existing capabilities, read actual source, adapt useful interfaces into native plugins, and delegate work to your Legion core for research, collaboration, revisions and file delivery. **The aim is one useful entry point into an ecosystem, not a larger control panel.**
 
-**Discovery, source reading and packaging need no Legion token.** Collaboration requires a compatible service you are authorized to use and your own personal token; no backend is included. DSH keeps its conversation, tool choices and permissions. This is independent community code, not an official DeepSeek product.
+`dsh-plugin-legion` **0.3.0** is the DSH-native entry point. The actual Legion core is installed separately; native harnesses, media models and devices are added as needed. This plugin does not bundle a company monorepo, every upstream project, or model weights.
 
-**[Current release and native-installation status](docs/PLAN.md)** · [Ecosystem guide](docs/ECOSYSTEM.md) · [Protocol](docs/PROTOCOL.md) · [Security](docs/SECURITY.md)
+```text
+DSH: conversation, native tools, permissions and UI
+  ↕ Legion plugin: discovery, source, packaging, tasks and files
+Independent Legion core: research, orchestration, recovery and delivery
+  ↕ Existing member/capability interfaces, installed and authorized as needed
+Native harnesses · CLI / MCP / skills · Media · Devices
+```
+
+**Discovery, source reading and packaging need no Legion token.** Collaboration requires a compatible service and a personal identity you are authorized to use. DSH keeps its own loop; Legion owns delegated work, and this connector does not add another commander. This is independent community code, not an official DeepSeek product.
+
+**[Core capabilities and installation](docs/CORE.md)** · [Ecosystem and principles](docs/ECOSYSTEM.md) · [Actual delivery status](docs/PLAN.md) · [Protocol](docs/PROTOCOL.md) · [Security](docs/SECURITY.md)
 
 ## What you can do
 
@@ -16,8 +26,11 @@ Bring open-source capabilities into **DeepSeek Harness (DSH)**, with optional co
 | Read a project's interfaces and license | `legion_source` | Pinned source, file hashes and bounded previews; incomplete reads stay explicit. |
 | Package code already adapted by an author | `legion_bundle` | Writes workspace files and metadata; does not install or execute them. |
 | Install or switch capabilities | Official `plugin_manager` | Native installation, approvals, bundle selection and individual plugin switches. |
+| See what your Legion service really has | `legion_runtime` | Current member, capability or catalog observations; registration is not installation, configuration or verified execution. |
+| Delegate work and continue revisions | `legion_submit` | Real delegation; `previous_task_ref` reconnects to the original Legion conversation. |
 | Use a local tool for a Legion task | `legion_call`, then a separate `legion_message` | Execution and delivery are two decisions; a mailbox receipt is not model consumption. |
 | Follow remote work | `legion_status` | Task state, events, commander messages and formal exports; no automatic mailbox execution. |
+| Receive actual files | `legion_download` | Downloads formal artifacts of this task and compares their bytes with the service's SHA-256. |
 
 After enabling the connector, try an ordinary DSH request:
 
@@ -26,6 +39,8 @@ Find an existing plugin for the capability I need. Show its sources and limitati
 ```
 
 Or ask DSH to inspect a public repository, adapt its real interfaces, and package independently useful capabilities. **This is not an automatic converter for arbitrary applications.** The on-demand `legion-ecosystem` skill supplies the available tools and development references.
+
+The core retains world-reference research, intent context, native collaboration, knowledge reuse, failure feedback, continued revision and formal delivery through existing modules. See the [capability map](docs/CORE.md). Retaining a mechanism does not prove every member is installed or that a team generally outperforms the strongest individual harness.
 
 ## Install a reviewed local copy
 
@@ -50,7 +65,26 @@ This is a parameter template, not a published package address. For public pinned
 
 Host plugins run **outside the agent sandbox**. Review code and dependencies before trusting them; see [Security](docs/SECURITY.md).
 
-## Optional: collaborate with your Legion service
+## Connect your independently installed Legion core
+
+See [Core installation](docs/CORE.md) to create an instance and configure your own model provider. On the same machine, run this from the core directory:
+
+```sh
+.venv/bin/python -I meyo.py dsh-config --state-dir "/absolute/path/to/your/private-instance"
+```
+
+Put only its **`config` object** into this plugin's native configuration. The output contains a service address and credential-file path, never the credential:
+
+```json
+{
+  "baseUrl": "http://127.0.0.1:8000",
+  "tokenFile": "/absolute/path/to/your/private-instance/login-token.txt"
+}
+```
+
+`tokenFile` is operator configuration, not a model-chosen path. Each request rereads an owner-only regular file so normal rotation works. A configured but invalid file fails explicitly rather than falling back to another identity. Configuration output does not verify model access; submit a real task.
+
+### Existing remote services: environment configuration remains supported
 
 Configure these privately in the DSH Host environment. The JSON Environment editor needs **JSON string values, including quotes**; ordinary process environment variables use plain strings.
 
@@ -59,10 +93,12 @@ Configure these privately in the DSH Host environment. The JSON Environment edit
 | `LEGION_BASE_URL` | `"https://legion.example.invalid"` |
 | `LEGION_PERSONAL_TOKEN` | `"<your-personal-token>"` |
 
-Keep the token out of chat, commands, plugin configuration and Git. Remote URLs require HTTPS; HTTP is allowed only on loopback. Installing this connector does not start a service. Optional candidates, project bindings and private state settings are in [Protocol](docs/PROTOCOL.md#7-configuration).
+Keep the token **value** out of chat, commands, plugin configuration and Git. `tokenFile` accepts only a local absolute path and takes precedence over `tokenEnv` without fallback. Remote URLs require HTTPS; HTTP is allowed only on loopback. Installing this connector does not start a service. Optional candidates, project bindings and private state settings are in [Protocol](docs/PROTOCOL.md#7-configuration).
 
 ```text
 /legion help
+/legion runtime members
+/legion runtime capabilities
 /legion start page-1 Create a small HTML page with status text and a button.
 /legion status <task_ref>
 /legion download <task_ref> <artifact_id>
@@ -85,4 +121,4 @@ Repository text, catalog descriptions and task messages are untrusted material, 
 
 Keep recovery state private. New v2 native-call records retain metadata, not result bodies; old records and both systems' sessions may still contain content. Uninstalling does not delete user files or cancel remote work.
 
-[MIT](LICENSE) covers this connector only. Dependencies, source projects, generated adapters and the optional backend retain their own licenses. Generated examples and private validation artifacts are not shipped with the connector.
+[MIT](LICENSE) covers this connector only. The separate core is currently a personal private preview; its first-party public license and third-party redistribution rights are unresolved, not inherited from this connector. Generated examples, instance data, credentials and private validation artifacts are not shipped with the connector.

@@ -5,6 +5,7 @@ import { LegionClient, validateCandidateHarnesses } from './lib/client.js'
 import { executeLegionCommand, executionFrom } from './lib/commands.js'
 import { capabilityContext } from './lib/ecosystem.js'
 import { registerEcosystem } from './lib/extension.js'
+import { credentialFilePath } from './lib/credentials.js'
 
 export const name = 'legion'
 export const inject = ['tools']
@@ -24,11 +25,13 @@ function validateBaseUrl(value) {
 
 const fields = {
   baseUrl: Schema.transform(Schema.string(), validateBaseUrl, true)
-    .description('Legion 服务地址；省略时使用 LEGION_BASE_URL，未设置时使用 http://127.0.0.1:8000。'),
+    .description('Legion 服务地址；省略时使用 LEGION_BASE_URL，未设置时使用 http://127.0.0.1:8000。保存配置会重载军团插件并中止本地在途请求，不取消远端任务。'),
   candidateHarnesses: Schema.transform(Schema.array(Schema.string()), validateCandidateHarnesses, true)
     .description('可选的用户指定成员候选，按原顺序传给服务；省略或空列表不发送 plan。不由模型参数提供，不增加权限或兜底。'),
   tokenEnv: Schema.string().pattern(/^[A-Za-z_][A-Za-z0-9_]*$/).default('LEGION_PERSONAL_TOKEN')
     .description('保存个人令牌的环境变量名；不填写令牌本身。'),
+  tokenFile: Schema.transform(Schema.string(), credentialFilePath, true)
+    .description('可选的个人令牌文件绝对路径（本人所有的0600普通文件）。设置后优先于tokenEnv，读取失败不回退；不填写令牌本身。'),
   stateDirectory: Schema.string().pattern(/\S/).description('本机任务恢复索引目录（可选）。'),
   requestTimeoutMs: Schema.natural().min(100).max(300000).default(30000)
     .description('单次 HTTP 等待上限，单位毫秒；超时不取消远端任务。'),
@@ -53,19 +56,41 @@ const knownFields = Schema.transform(Schema.any(), value => {
     throw new Error('Legion configuration must be an object')
   }
   if (Reflect.ownKeys(value).some(key => !Object.hasOwn(fields, key))) {
-    throw new Error('Unknown Legion configuration field; use tokenEnv, never an inline token or lifecycleSignal')
+    throw new Error('Unknown Legion configuration field; use tokenEnv or tokenFile, never an inline token or lifecycleSignal')
   }
   // Validate before Schemastery can normalize an explicit null to "omitted".
   if (Object.hasOwn(value, 'candidateHarnesses')) validateCandidateHarnesses(value.candidateHarnesses)
+  if (Object.hasOwn(value, 'tokenFile')) credentialFilePath(value.tokenFile)
   return {}
 }, true).hidden()
 
-export const Config = Schema.intersect([knownFields, Schema.object(fields)]).default({})
+// One atomic snapshot: Settings exposes the existing fields, and the owning
+// fiber reloads them together rather than mixing a new URL with an old identity.
+export const Config = Schema.intersect([knownFields, Schema.object(fields)]).default({}).volatile()
+
+// Settings clones and serializes the schema twice. Its current Schemastery
+// loses transform callbacks on that second pass. Publish a declaration-only
+// form, not executable host callbacks. Config / ~standard validation stays
+// intact: ConfigEditor still validates every raw write before persisting it.
+const form = Schema.object(Object.fromEntries(Object.entries(fields).map(([key, node]) => {
+  const field = new Schema(node.type === 'transform' ? node.inner : node)
+  field.meta = { ...field.meta, ...node.meta }
+  if (node.type === 'transform' && !Object.hasOwn(node.meta, 'default')) delete field.meta.default
+  return [key, field]
+}))).default({}).volatile()
+Config.toJSON = () => form.toJSON()
 
 const text = description => ({ type: 'string', required: true, description })
 const taskRef = text('当前 DSH 会话中已有的 task_ref，来自 legion_submit 或 legion_list；必须明确指定。')
 const operationKey = text('本次操作的稳定去重键；查询或重试同一操作时保留原键。')
 const tools = [
+  {
+    method: 'runtime',
+    description: '只读军团当前成员、能力或目录事实；保留未安装、预热、过期和错误，不把注册当可用。不安装、不强制探活、不执行模型任务。',
+    parameters: {
+      view: { type: 'string', enum: ['members', 'capabilities', 'catalog'], description: '默认 members；仅查询已有服务端点。' },
+    },
+  },
   {
     method: 'submit',
     description: '向军团提交任务并返回可恢复的引用；同一 key 不重复派单。previous_task_ref 在同一军团会话开启新轮次。',
@@ -118,13 +143,25 @@ const tools = [
   },
 ]
 
-export function apply(ctx, config) {
+export function apply(ctx, liveConfig) {
+  const config = liveConfig.get()
   const lifecycle = new AbortController()
   const client = new LegionClient({ ...config, lifecycleSignal: lifecycle.signal })
-  ctx.effect(() => () => {
+  const dispose = () => {
+    if (lifecycle.signal.aborted) return
     lifecycle.abort(new DOMException('Legion plugin unloaded; remote tasks were not cancelled', 'AbortError'))
     return client.dispose()
-  }, 'legion HTTP lifetime')
+  }
+  ctx.effect(() => dispose, 'legion HTTP lifetime')
+  ctx.on('loader/volatile-update', () => {
+    // Loader has committed the new raw config before this owning-fiber event.
+    // Stop old closures synchronously; official reload cleans every registration.
+    dispose()
+    void ctx.fiber.restart().catch(() => {
+      // ConfigEditor observes inactive fibers and rolls back failed reconciliation.
+      ctx.logger.warn('Legion configuration reload failed; the old client remains closed')
+    })
+  })
 
   for (const { method, description, parameters } of tools) {
     ctx.tools.register(defineTool({
@@ -160,7 +197,7 @@ export function apply(ctx, config) {
     commandCtx.commands.register({
       name: 'legion',
       description: '提交或跟进军团任务，查询进度、发送消息、恢复、取消与下载。',
-      input: { hint: 'help | start | list | status | message | resume | cancel | download | continue' },
+      input: { hint: 'help | runtime | start | list | status | message | resume | cancel | download | continue' },
       handler: invocation => executeLegionCommand(client, invocation),
     })
   })

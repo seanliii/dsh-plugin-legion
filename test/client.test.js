@@ -1,7 +1,7 @@
 import test from 'node:test'
 import assert from 'node:assert/strict'
 import { createHash } from 'node:crypto'
-import { mkdtemp, readFile, rm, writeFile } from 'node:fs/promises'
+import { mkdtemp, readFile, readdir, rm, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { fixture } from './fixture.js'
@@ -255,6 +255,49 @@ test('artifact download is limited to a server-listed URL and checks exact SHA-2
   assert.deepEqual(await readFile(result.local_path), server.bytes)
 })
 
+test('HTML downloads request original bytes instead of modified previews, including behind a proxy prefix', async t => {
+  for (const prefix of ['', '/legion']) {
+    await t.test(prefix || 'service root', async t => {
+      const { client, server } = await setup(t, {
+        prefix, artifactPath: '/home-outputs/result.html', previewArtifact: true,
+        artifactBytes: '<!doctype html><html lang="zh"><title>原文件</title><body>真实交付</body></html>',
+      })
+      const start = await client.submit({ key: 'html', query: 'Make an HTML file' }, execution())
+      server.finish(start.team_id, [{
+        name: 'result.html', url: '/home-outputs/result.html',
+        sha256: server.sha256, bytes: server.bytes.length, team_id: start.team_id,
+      }])
+      const state = await client.status({ task_ref: start.task_ref }, execution())
+      const result = await client.download({
+        task_ref: start.task_ref, artifact_id: state.artifacts[0].artifact_id,
+      }, execution())
+      assert.equal(result.integrity, 'sha256_verified')
+      assert.deepEqual(await readFile(result.local_path), server.bytes)
+      const request = server.requests.find(row => row.path === `${prefix}/home-outputs/result.html`)
+      assert.equal(request.search, '?download=1')
+      assert.equal(request.headers.authorization, 'Bearer fixture-token')
+      const ref = await client.store.get(execution().sessionId, start.task_ref)
+      const [stored] = await client.store.readObservation(ref, 'artifacts')
+      assert.equal(new URL(stored.url).search, '', 'persist only the authorized export URL')
+    })
+  }
+})
+
+test('original download mode does not authorize query parameters supplied in artifact URLs', async t => {
+  const { client, server } = await setup(t)
+  const start = await client.submit({ key: 'query', query: 'Make a file' }, execution())
+  server.finish(start.team_id, [{
+    name: 'result.txt', url: '/outputs/result.txt?download=1',
+    sha256: server.sha256, bytes: server.bytes.length,
+  }])
+  const state = await client.status({ task_ref: start.task_ref }, execution())
+  assert.equal(state.artifacts[0].download_eligible, false)
+  await assert.rejects(client.download({
+    task_ref: start.task_ref, artifact_id: state.artifacts[0].artifact_id,
+  }, execution()), /authorized/)
+  assert.equal(server.requests.filter(row => row.path === '/outputs/result.txt').length, 0)
+})
+
 test('hash mismatch never exposes downloaded bytes as a valid result', async t => {
   const { client, server } = await setup(t, { badArtifact: true })
   const start = await client.submit({ key: 'badfile', query: 'File' }, execution())
@@ -368,11 +411,12 @@ test('response limits report a failure rather than silently discarding evidence'
 })
 
 test('missing credentials do not burn a key or perform any network request', async t => {
-  const { client, server, env } = await setup(t)
+  const { client, server, env, stateDirectory } = await setup(t)
   delete env.FIXTURE_TOKEN
   const args = { key: 'setup-first', query: 'Work' }
   await assert.rejects(client.submit(args, execution()), /host environment/i)
-  assert.equal((await client.list(execution())).tasks.length, 0)
+  await assert.rejects(client.list(execution()), /host environment/i)
+  assert.deepEqual(await readdir(stateDirectory), [], 'No recovery state may be written without an identity')
   assert.equal(server.requests.length, 0)
   env.FIXTURE_TOKEN = 'fixture-token'
   assert.equal((await client.submit(args, execution())).submission, 'accepted')
