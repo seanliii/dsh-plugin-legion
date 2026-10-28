@@ -130,7 +130,11 @@ dsh plugin --profile web -w add 'github:seanliii/dsh-plugin-legion#<PUBLIC_FULL_
 
 **作者已经修好了 `marked` 适配包。** 独立的官方 rc.2 Loader／ToolRuntime 实际调用 20 次：14 次业务成功、6 次卸载后的预期 `UNKNOWN_TOOL`。缺少 `tools` 注入和不符合 JSON 契约的问题由作者修复，不是测试临时补出来的。之后的原生 `legion_bundle` 包装已独立读回：17 个文件与回执 hash 一致，3 份运行源码与已执行版本一致。依赖解析用了本地别名，尚不能证明安装后的依赖布局可用。
 
-**真实 Host 验收仍未完成。** 一次性的 `plugin_manager list_bundles` 许可已用于原查询，重复查询没有获批；它不包含安装、启用或重启。磁盘上的来源重试修复不等于旧 Host 已加载，最后保存的原生包装回执仍没有 `source_retrieval`。安装、独立开关、真实 Host 调用、后续显式消息和远端实际消费仍须分别验收。详见[当前实现与验收计划](docs/PLAN.md)。
+**真实安装已经试过一次，但失败了。** 早先的一次 `list_bundles` 查询之后，作者另获一次具体授权，通过官方 `plugin_manager install_bundle` 安装并保持 `enabled: false`。返回为 `application: failed`、`changed: false`、`ERR_PNPM_ADDING_TO_ROOT`。读回确认 profile 清单未变，没有目标依赖、选中的 bundle 或目标安装目录；作者的 17 个文件仍匹配。失败进程没有记录 pnpm 的可执行文件／版本，不能断言当时一定用了 pnpm 9。两次单次许可都已消费，不包含再次安装或重启。
+
+**兼容方案已在隔离环境验证，尚未在 Host 生效。** 固定 Node v24.20.0／DSH rc.2／pnpm 11.7.0 下，包操作层 27 项和另一轮官方 `Context`／`Loader`／`PluginManager` 的 33 项检查符合预期。后者只用自写样例，不加依赖解析别名、强制根目录安装补丁或脚本策略覆盖，验证了待批准脚本、过期批准、获准样例脚本、失败回滚和移除。pnpm 9 加根目录参数的备选方案会执行未批准和已明确拒绝的样例脚本，因此未采用。这些不是原生审批界面或插件功能验收。另已准备调用官方 `runCli` 安装器配置入口的本地启动候选，仅检查语法与隔离 `--version`，不随连接器发布，也不会静默生效。详见[安装实验的准确边界](docs/ECOSYSTEM.md)。
+
+**真实 Host 验收仍未完成。** 重启测试 Host、再试一次禁用安装需要新的具体授权；不包括启用、额外构建脚本、永久工具权限或发布。磁盘上的来源重试修复仍不等于旧 Host 已加载，最后保存的原生包装回执没有 `source_retrieval`。安装、独立开关、真实 Host 调用、后续显式消息和远端实际消费仍须分别验收。详见[当前实现与验收计划](docs/PLAN.md)。
 
 ## 数据与许可
 
