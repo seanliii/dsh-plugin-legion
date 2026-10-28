@@ -1,147 +1,87 @@
 # Security and trust / 安全与信任
 
-**0.2.0 is not a production-wide safety certification.** The final integrated record reports **357/357 passed** on Node **v24.20.0**, with `npm run check` and `npm test` both exiting 0, no failures/cancellations/skips, and unchanged source hashes before/after. It ran **2026-10-28 04:25:05–04:25:09 UTC / 12:25:05–12:25:09 Asia/Shanghai**. All 30 recorded code/test/manifest files still match; this reuses the same-byte integrated evidence rather than claiming another run. The scope is isolated tests and the official rc.2 Runtime, not a real Host or remote-consumption check.
+Legion Bridge 是独立社区连接器，不是 DeepSeek 官方背书、安全认证或 Legion 后端。实现边界在本页，实装与发布事实只见[当前状态](PLAN.md)；测试通过不证明任意插件、任务或部署安全。
 
-**已修复并纳入当前回归：** 显式消息 ACK 嵌入 data URL 的脱敏、旧 v1 `received` 等投递事实的只读恢复，以及固定来源重试。另有来源重试独立 13 项复核通过，不与全套相加。这不表示所有格式、返回路径或未知秘密均被覆盖。一次 `plugin_manager list_bundles` 许可已用于查询，重复查询未获批，不包含安装／启用／重启。图片、结构化输出、取消、结束回合和后续显式发送仍需真实 Host 重放。
+## 1. 凭据与服务
 
-## 1. Start without a Legion credential / 开源接入不需要先交令牌
+发现、读取公开源码、包装不需要 Legion token，仍会按用途联网或调用原生工具。协作才需要用户有权使用的兼容服务与个人令牌；安装此包不会启动后端。
 
-Discovery, public GitHub source reading and packaging do not require a Legion token. They still use network access where applicable and the Host's native tools. Only collaboration with a Legion service needs that service's existing authorization and your personal token; the connector does not provide a backend.
+- 服务地址仅由用户／运营者配置。`tokenEnv` 是 Host 环境变量名，默认 `LEGION_PERSONAL_TOKEN`，不是令牌值；内联 token 和未知配置字段会拒绝。
+- 令牌不要放进聊天、命令、工具参数、插件配置、生成文件或 Git。使用适当范围的个人凭据，泄露后通过运营者撤销／轮换。
+- 远端必须 HTTPS；HTTP 仅回环。拒绝 URL 凭据、query、fragment 与重定向。运营者仍负责真实任务权限、工作区和远端执行。
+- `projectBindingFile` 只描述运营者已授权的 `workspace_root`，不新授权限、不上传工作区。历史引用也不能产生当前访问权。
 
-搜索、读公开源码、包装无需 Legion token；联网和本地工具权限仍按各自用途处理。协作才配置个人服务，不要求普通用户先提交凭据。
+## 2. Host 插件是受信代码，不是沙箱
 
-Only the user/operator configures the service endpoint. `tokenEnv` names a Host environment variable (`LEGION_PERSONAL_TOKEN` by default), not a token value. Keep tokens out of chat, commands, tool arguments, plugin configuration objects, generated files, Git and public reports. Use a dedicated least-privilege personal credential; revoke/rotate exposed credentials through the operator. Do not probe another person's token or task access.
+启用并加载的插件在 **agent 沙箱之外**使用 Host 的文件、环境和网络能力；安装时依赖还可能执行构建脚本。审查实际代码、依赖和来源，不能只相信市场说明或“审批已通过”。
 
-服务地址和个人令牌由用户私下配置；不能靠任务参数改地址、塞令牌或增加权限。令牌泄露后应撤销／轮换，不以联调为名试用他人权限。
+仓库正文、市场条目、工具描述和军团消息都是**不可信材料**，不是系统指令、访问授权或自动执行命令。连接器不监听邮箱后自行执行，不另设主循环或产品质量裁判。
 
-## 2. Host plugins are trusted code / Host 插件不是沙箱
+官方参考：[安全说明](https://github.com/deepseek-ai/deepseek-harness/blob/22ddee3792402c3e70ec5f86a63c3e3e895a2f60/SAFETY.md)、[包发布与信任](https://github.com/deepseek-ai/deepseek-harness/blob/22ddee3792402c3e70ec5f86a63c3e3e895a2f60/docs/user/develop/basic/publish.md)。这是固定源码参考，不证明本机或任意新版本已受安全审计；本连接器运行契约固定 npm rc.2。
 
-When enabled and loaded, a DSH bundle executes with the Host's access to files, environment and network, **outside the agent sandbox**. Review the whole pinned commit and its dependencies before installation/enabling. Native approvals are not a guarantee that a plugin is harmless. Legion Bridge is independent community code, not an official DeepSeek endorsement.
+## 3. 来源、适配与许可
 
-启用并加载后的 bundle 以 Host 权限运行，不能把 agent 沙箱当成插件隔离边界。禁用安装仍可能涉及依赖解析和构建风险；安装原生插件意味着信任实际代码和依赖，不只是信任搜索结果里的说明。
+`legion_source` 只读公开 GitHub，核对固定 commit／tree／blob，返回有限 UTF-8 文本。不跟随重定向，也不把私有仓库、符号链接、子模块或二进制当成源文件。`legion_discover` 的本机范围仅当前 Agent 可见工具；市场仅用户已配置索引，`index_url` 不能偷偷新增来源。
 
-DSH remains the decision maker and runs the official `plugin_manager`. The connector does not take over the main loop, install a second runner or automatically execute instructions from repositories or remote mailboxes. Repository text, tool descriptions, market entries and task messages are **untrusted data**, not system instructions, installation approvals or access grants.
+固定 hash 解决“读的是哪份内容”，不解决“代码安全、作者可信、允许分发”。截断、请求失败或未检测到 LICENSE 不能推断不存在。限流等错误仅保留白名单诊断，不透传响应正文、不改变失败通道、不自动换身份绕限制。大 JSON 的转存内容仍是数据，不是 instruction。
 
-远端文字只能提供信息；是否执行某个工具由当前 DSH 判断并遵守原生权限。不得把 README、市场描述或任务消息里的命令当成自动执行授权。
+适配文件及提供的 LICENSE **原文保留，不自动清除秘密**。不要将私有代码、令牌或无关用户文件作为输入。连接器的 [MIT](../LICENSE) 仅覆盖连接器；来源、依赖、适配代码和后端各有许可。`license` 字符串、`NOASSERTION` 或 provenance 都不是授权书；分发前保留适用原文与通知并核实权利。没有 LICENSE 原文不会代补 MIT。
 
-Pinned official references: [DSH safety statement](https://github.com/deepseek-ai/deepseek-harness/blob/22ddee3792402c3e70ec5f86a63c3e3e895a2f60/SAFETY.md) and [plugin publication and trust](https://github.com/deepseek-ai/deepseek-harness/blob/22ddee3792402c3e70ec5f86a63c3e3e895a2f60/docs/user/develop/basic/publish.md#L161-L185). The fixed `SAFETY.md` body was verified against its Git blob on **2026-10-28 04:46:03 UTC**: 1,673 bytes, SHA-256 `62075bb51e0f7790441e7722ff12063107b4866019332e71ef01b63b6f880fee`. It describes an experimental developer preview that has not been security-audited. This verifies that one source file, not a deployed Host or all current marketplace rules.
+## 4. 写入与安装
 
-## 3. Public sources, packages and installation / 公开来源、包装与安装
+`buildBundle` 只是纯文本／JSON 包装函数，不联网、读写盘或执行输入 JavaScript。模型工具 `legion_bundle` 则获取来源事实并调用原生 `write`；它不自动把应用转成适配器，也不保证适配代码可运行。
 
-### Source reading / 来源读取
+来源观察的复用限同会话／实例／生命周期、完整 commit 与路径列表，最多 16 组／1 MiB；卸载清除，单次取消不清除早先成功观察。错误不复用，成功但截断仍标截断，保留原时间／hash。不缓存作者代码、输出目录、执行结果或权限；每次仍走当前写权限。复用不是当前访问证明或许可判断。
 
-`legion_source` accepts public GitHub repositories, resolves a commit and checks commit/tree/blob identity before returning bounded text. It rejects redirects and does not follow private repositories, symlinks, submodules or binary files as source. A pinned commit/hash identifies the observed bytes; it does not establish the author's trustworthiness, absence of malicious code or redistribution rights.
+路径、重复、保留文件、未知字段及大小检查只是协议保护，不是恶意代码检测。包无安装 scripts、直接依赖固定版本，不代表传递依赖无脚本或宿主兼容；不扫描 imports，也不生成 peer／engines 或注入代码。
 
-固定提交和 hash 解决“读的是哪份内容”，不解决“作者可信、代码安全、允许分发”。部分目录、截断、未检测到许可证和请求失败都不能写成“不存在”。当前代码已补限流等白名单诊断事实，不透传响应正文、跳转地址或原始异常；原生作者是否收到这些诊断仍待复验，不能承诺所有错误事实已经完整。
+- 用独立普通工作区，不写 DSH 配置／profile。`write` 可覆盖同名文件，部分成功不回滚；回执 hash 是预期内容，生成包为 `private: true`，包装不是发布。
+- 安装 target 使用 `file:` 加绝对目录；裸目录可能成为开发 `link:`，不递归安装目标依赖。本地目录可变，旧许可／hash 不证明后来内容可信。
+- 新装先禁用，但 **`enabled:false` 不是禁止脚本**，也不会自动停用已经选中的同包。读取真实状态；整包开关与各 runtime `entryId` 的开关分开，声明行 ID 不能代替运行 ID。
+- `approvedBuilds` 只在用户明确同意准确的 `pendingBuilds` 后传，属于 profile 持久构建许可。构建失败、包移除或清单回滚不能被视为撤销该许可或撤销脚本副作用。
+- 使用官方 `plugin_manager`，保留 `application`、`changed`、`nextStep`、警告与重启要求；不编辑 profile 文件绕过、不伪造审批。操作会影响同 profile 的其他会话。项目发布授权不代替原生具体审批或授予分发私有材料的权利。
 
-For local tools and markets, `legion_discover` only sees the current Agent's tools and user-configured official market indexes; public GitHub search is a separate source. It cannot add an arbitrary index through `index_url`. Native market fetching follows the official market implementation; search success is not installation approval or a security audit.
+## 5. 两步协作与不确定结果
 
-插件只使用当前可见工具与已配置索引，不暗用隐藏市场。索引读取与后续安装是两件事。
+`tool_names` 只分享选定 schema，不给远端执行 token。`legion_call` 需要当前会话任务引用、个人令牌、明确参数和稳定 key；新操作必须是当前可见的非 `legion_*` 工具。调用沿原生 Agent、父子 token、权限和取消路径进行，不执行远端文字拼出的私有快捷调用。
 
-### Packaging / 包装
+桥接器**不自动发 HTTP／消息**，所选工具自己仍可能联网。首回执 pending 只能投影子调用经原生策略的最终 content，不从隐藏 value／error／additionalContexts 补正文；失败、未知、取消仍走错误通道。父层可能改写、拒绝或取消，子成功不能提前当成根成功。
 
-`buildBundle` is a pure text/JSON packaging helper: no disk access, network, cache, installation or input-JavaScript execution. **The `legion_bundle` model tool is different:** it obtains actual public-source observations, or reuses eligible pinned facts, and invokes native `write` for the generated files. It does not turn arbitrary source into an adapter or prove that the supplied adapter is safe or runnable.
+官方结果观察器只在根终态后保存元数据，不存正文、不改首回执、不出站。`transport` 指 DSH 父链，不是网络 ACK。保存失败或缺根证据时保持未知／待定，不臆断副作用回滚。
 
-纯包装函数与有来源读取／原生写入行为的模型工具必须分开。模型／作者先适配接口，包装器只包装文件；语法、运行效果、外部环境和权限需求仍需核查。
+**等 Host 展示外层最终结果后**，DSH 下一次自选可分享内容调用 `legion_message`；不要在同一个未完成的 `run_code` 内调用工具并发成功消息。这是使用协议，不是对任意用户程序的拦截器。消息失败不代表本机未执行，不能因此重做。
 
-Pinned-source reuse is limited to the same native session and connector instance/lifetime, keyed by supplied repository identifiers, full 40-hex commits and path lists. It retains at most **16 groups / 1 MiB**, clears on disposal/lifecycle abort, and contains no authored adapter, destination, native execution result or permission. Individual call cancellation does not clear earlier successful facts. Branches/tags/short or omitted refs and partial/errored observations—including nested `license.error`—are fetched again.
+同 key 同输入只恢复元数据，输入变动拒绝。目标能力停用后也可读既有记录，前提是连接器、原会话／状态及授权可用；连接器卸载后当然不能调用它。未知预约不重做，本地去重不承诺跨机器 exactly-once。生命周期中止后不继续请求，异步恢复读完仍检查取消／卸载。
 
-复用的是来源观察，不是授权；成功但截断的预览可复用，原 `fetched_at`、整文件 hash、截断和许可观察保留，明确标 `source_retrieval`／`retrieval`。它不重新确认当前 GitHub 可访问性、不证明读完全文或具备分发权。每次仍核当前 spec／目录并逐文件走当前原生写入与先读后写要求；错误重取、权限／父链／取消／卸载边界有隔离回归，不冒充旧 Host 已加载修复。
+v1 无祖先证据，旧成功不升格；明确失败保留，正文不回放。历史 ACK 只读白名单 `received`／`rejected`／`unconfirmed`，带 `historical:true`、`attempted_now:false`；缺失／损坏不谎报“未发送”。原生失败和历史收到可以并存，不相互覆盖。
 
-Path, duplicate, reserved-metadata, unknown-field and size checks are hard protocol protections, not code review or malware detection. Generated packages have no `prepare`, `postinstall` or other scripts and accept only exact direct dependency versions. This does **not** eliminate scripts or risks in transitive dependencies. No import scanning, automatic `peerDependencies`/`engines` generation or Host compatibility verification is performed.
+ACK 只说明服务收件；`read_at` 也不是模型消费。消息不自动唤醒终态，resume 是中断恢复，continue 才是同会话的新工作。真正使用了内容，需要原任务后续行为的证据。详见[协议](PROTOCOL.md#6-two-step-collaboration)。
 
-文件路径和依赖格式合法，不等于代码安全。生成包无脚本，不等于依赖树无脚本；固定直接依赖也不能替代宿主 peer 兼容检查。
+## 6. 输出、脱敏与下载
 
-Use a dedicated ordinary workspace directory, not `DSH_HOME`/profile storage. Native `write` may overwrite same-path files; partial success is not rolled back. The output's hashes are expected content hashes, not independent readback. The generated package is `private: true`; packaging is not publication.
+桥接正文预算 12,288 字节，另有深度／形状／长度限制；明确媒体、data URL、敏感与标记编码字段省略。普通长文本不按外形当作 base64 删除。本地图片、额外上下文、结束回合走原生转交，不附进远端文本消息；不能声称完整媒体回传或视觉通过。
 
-选择独立工作目录，避免覆盖已有工程。写到一半失败要保留已写清单，不能假称已回滚，也不能把文件清单当成安装成功。
+清理覆盖已识别的敏感字段／键、配置 token 及其 URL 编码形式、可识别 bearer、URL 凭据和已识别敏感参数；持久化／恢复 ACK 仅留合法状态、HTTP 数字与脱敏限长 reason，首次返回仍可含清理后的服务响应。截断／省略标签也清理；错误 JSON 使用固定来源标签，不返回原输入片段。
 
-### Installation / 安装
+**这不是完整 URI／HTML／Markdown 解析器或万能秘密／个人信息检测。** 未知秘密、其他编码、正文或路径仍可能保留；清理不删除既有记录、两端会话或下载内容。公开前检查实际文件和输出，不把“已脱敏”当成公开许可。
 
-Use the official `plugin_manager` to `install_bundle` the reviewed directory, initially with `enabled: false`. Preserve its actual `application`, warnings, pending build approvals and restart requirements; never invent `approvedBuilds` or bypass it by editing profile package files. Each subplugin can be switched separately using native controls, but the bundle is one installation unit. These switches still need real native verification for a generated package.
+下载只接受任务中观察到的正式 `artifact_id`，实时复核任务身份／权限和元数据；不接受任意 URL 或目标路径。仅同源正式导出，无凭据／query／fragment／重定向；合法 SHA-256 字段必须相符，私有临时文件通过 hash／大小核对后才成为最终文件。**完整性不是签名、病毒扫描、正确性或体验验证**。
 
-作者已自行修好 `marked` 双插件的服务注入和 JSON 输出，官方 Loader／ToolRuntime 独立执行 20 次：14 次业务成功、6 次卸载后预期 `UNKNOWN_TOOL`。最新原生包装的 17 个文件已读回且 hash 一致，3 份业务源码与被测版相同；没有代补业务。它仍未在真实 Host 安装，依赖解析别名不证明安装后的布局。最后保存的包装回执也未带磁盘新版的 `source_retrieval`，不据此宣称 Host 已加载新代码；详见 [PLAN](PLAN.md)。
+HTTP 500／408、超时、断线或未知接单／消息／恢复结果保持 `unconfirmed`，不是“没发生”。取消 ACK／`cancel_requests` 也不证明 OS 进程已停；本地停止等待不必然停止远端工作。
 
-Installation needs its own current authorization; the consumed list-query permission cannot be reused. An initially disabled install still downloads/resolves dependencies and may carry dependency/build risks. It does not authorize enabling, restarting, publication or a permanent permission change.
+## 7. 数据留存与卸载
 
-The source code and supplied LICENSE text are preserved, not automatically sanitized. Do not supply private code, secrets or unrelated user files as adapter input. Provenance makes origins inspectable; it is neither a signature nor a license grant.
-
-## 4. Local execution and remote return / 本机执行与远端回流
-
-`legion_submit.tool_names` shares only selected current Agent-visible descriptions/schemas, not native execution tokens or remote access. `legion_call` still requires a current-session task reference, personal credential, explicit recipient, stable operation key and tool arguments. New execution requires a visible non-`legion_*` tool. It uses the native DSH runtime, not shell commands constructed from remote text.
-
-**`legion_call` itself sends no HTTP or messages.** The selected native tool may have its own network behavior; this is not a blanket network sandbox. The first receipt is only a pending child observation, not proof that the enclosing call committed. Failed/unknown child execution and cancellation still raise tool errors; initial metadata-storage failure is reported separately.
-
-远端可以提出需求，不能直接获得本机执行令牌。DSH 明确选工具和参数；首次 `native.state: "unknown"`、`transport.state: "pending"` 不能当成功收据。
-
-The official `tools/result` observer follows the current call through all ancestors and saves terminal **metadata only** after the root finishes. It records call IDs/names/states, not child or parent bodies. It neither sends anything nor rewrites the first receipt. Child success plus successful ancestors can establish native success; ancestor failure/cancellation leaves child success unconfirmed. Here `transport` means native enclosing-call state, **not HTTP delivery**.
-
-The first projection uses only the child's final policy-processed `content`, never hidden `value`, `error` or `additionalContexts`. The parent may still replace or reject it. **After the Host actually displays the enclosing call's final result**, DSH can make a separate decision to call `legion_message`, using only visible, shareable content. Do not combine execution and a success message in the same `run_code` or still-running parent. This is usage guidance, not a runtime interceptor for arbitrary code.
-
-消息有自己的稳定操作键和回执；新 v2 `legion_call.delivery` 保持 `not_attempted`、`automatic: false`，不会因后续发送而更新。独立发送失败不代表本机没执行，也不应触发重做。两步设计与专项回归不能代替真实 Host 对待提交结构化输出的验收。详见[精确协议](PROTOCOL.md#6-return-one-native-result-to-a-task--把一次原生结果交回任务)。
-
-Same task/key and matching arguments recover **metadata only**, without repeating native side effects or replaying result text. Changed arguments fail. Recovery checks the existing reservation before target visibility, so it remains possible after the **target capability** is disabled/uninstalled, provided Legion Bridge, the original state/session and authorization remain available. A reservation without saved metadata stays unknown; do not change keys to bypass it. Local duplicate suppression is not cross-machine exactly-once.
-
-v1 记录没有祖先终态证据，旧“成功”不能确认原生成功，旧正文也不回放。已修复的恢复路径只读历史 ACK：有效 `received`／`rejected`／`unconfirmed` 保留，标记 `historical: true`、`attempted_now: false`；缺失、不可读或畸形 ACK 保持 `unconfirmed`，不说成未发送。仅白名单元数据可返回，不回原始响应、不改盘、不重发；异步读取后仍检查取消和卸载。历史收到不等于远端模型消费。
-
-The bridge's content projection is bounded to **12,288 bytes**, with additional shape limits. Explicit image/audio/video content, data URLs and explicitly marked media/encoded fields are omitted. Ordinary long text or a hash is not treated as base64 by length or appearance; existing string/shape/byte limits still apply. Local image/user contexts, `additionalContexts` and turn completion use DSH's native forwarding path; they are not attached to the explicit remote text message. Only bounded, redacted text/structured data is intended for sharing, not full media transfer.
-
-**远端文本不传整图，不等于本机作者可以丢图。** 独立官方 Runtime probe 已验证最终文本、本地图片／上下文转交、媒体／凭据省略、预算和仅元数据恢复；它不证明真实作者收到或远端消费。ACK 的 data URL 清理已覆盖右括号、单引号、header、SVG、编码及 base64 对照，保留分隔后的普通说明。它不是完整 URI／Markdown／HTML 解析器，也不是万能秘密检测，不能宣称所有返回路径已安全。
-
-An explicit message's `acknowledgement: "received"` is a service receipt, not proof of remote-model consumption. `consumed_by_model_confirmed` remains `false` in native-call receipts. No mailbox watcher executes requests or wakes terminal tasks. Follow-up work must be explicit; recovery is for interrupted recoverable work, not a new run of a finished task.
-
-投递 ≠ 消费；任务结束后不会因收到消息自动醒来。原生成功、投递成功、远端消费和有用的用户结果是四项不同事实。
-
-## 5. Service transport and exports / 个人服务与文件下载
-
-Remote Legion URLs require HTTPS; HTTP is restricted to loopback. URL credentials, query strings and fragments are rejected. The client rejects redirects. Service path-prefix handling has offline coverage only; a real reverse-proxy deployment remains unverified. Operators remain responsible for token scope, per-task access, workspaces and remote execution.
-
-服务运营者继续负责真实权限；连接器不把私有服务变成公共服务。可选 `projectBindingFile` 只描述已授权的 `workspace_root`，不授予新权限，也不上传工作区。
-
-Local references are bound to the configured service and DSH invocation's session. Status checks both the saved team and `conversation_id`; missing/mismatched identity fails. Task IDs come from the service's task-map keys, not nested task text. Historical local records never create current authorization.
-
-本地引用不是权限凭据；服务 team／conversation 必须与保存的绑定一致。
-
-Downloads require an observed formal `artifact_id`, live authorization recheck, same-origin export routes and a valid SHA-256. Callers cannot choose arbitrary download URLs or destination paths. URLs cannot contain credentials, query/fragment or redirects. If both `sha256` and `provenance.sha256` are present, they must be valid and agree. Declared size and downloaded bytes are also checked before the private temporary file becomes the final file.
-
-下载只接受当前任务中的正式导出，不能靠本地历史或清理后的 URL 新造授权。hash／大小一致只证明与服务声明匹配，**不是可信签名、病毒扫描、内容正确或体验合格**。
-
-Timeouts and local aborts stop a local wait, not necessarily remote work. HTTP 500/408 and transport failures during submission/message/resume stay `unconfirmed`, not proof that nothing ran. Keep the original keys and inspect the original task. A cancellation acknowledgement or `cancel_requests` record is likewise not proof that OS processes stopped.
-
-## 6. Data retained and shared / 数据保留与分享
-
-| Data / 数据 | Location and boundary / 位置与边界 |
+| 数据 | 留存与分享边界 |
 |---|---|
-| Discovery terms and public source reads / 搜索与读源 | Sent to GitHub or user-configured native indexes as needed; returned source text may enter the DSH conversation. / 查询并非无网络，但不需要 Legion token。 |
-| Pinned-source observations / 固定来源观察 | Successful provenance, including bounded license observations, retained only in memory within the same connector lifetime/session scope, capped at 16 groups / 1 MiB. Original timestamps/hashes remain; disposal/lifecycle abort clears them. / 不缓存适配代码、目录、执行结果或权限；不是新鲜访问证明。 |
-| Adapter files and provenance / 适配文件与来源记录 | Written into the selected workspace; includes supplied code, source facts and supplied license text. No automatic removal on uninstall. / 不替作者清除输入代码里的秘密。 |
-| Task/context/messages / 任务与消息 | Present in DSH and Legion sessions. Raw inputs/full histories are not separately copied into the recovery index. / 不等于两端会话无留存。 |
-| Native-call metadata / 原生调用元数据 | New v2 ledger stores identity and child/ancestor status, not result bodies; no automatic sending or body replay. / 新 v2 只存元数据，不回正文、不自动发送。 |
-| Legacy records and visible output / 旧记录与实际输出 | Old v1 files are not automatically erased; DSH/Legion sessions and user files may still contain text or images. Later explicit messages have their own retention. / 不是零留存或匿名数据。 |
-| References and observations / 引用与观察 | Keys, IDs, digests, receipts, bounded sanitized reasons/status, cursor and export metadata in private `stateDirectory`. / 不应公开的运行记录。 |
-| Personal token / 个人令牌 | Host environment and authenticated service transport; not intentionally written to bridge state. Host environment storage is outside this promise. / 不承诺 Host 对环境变量零留存。 |
-| Downloaded artifacts / 下载文件 | User-owned files retained in task storage after disable/uninstall. / 卸载不删文件。 |
+| 搜索词／公开来源 | 按用途发 GitHub 或已配置索引，结果可能进入 DSH 对话。 |
+| 固定来源观察 | 有限内存缓存，保留原始时间／hash／许可观察；不是新的访问授权。 |
+| 适配工程 | 用户工作区的真实代码、provenance 和所供许可，不自动清理输入秘密或卸载删除。 |
+| 任务／消息 | 两端会话可保留正文；恢复索引不另复制完整历史，不等于零留存。 |
+| v2 原生调用 | 操作身份与子／祖先状态元数据，不存／重放正文；旧 v1 不自动擦除。 |
+| 引用／ACK／导出观察 | 私有 stateDirectory 中的 key、ID、digest、脱敏诊断、游标和元数据；不是实时授权或可公开日志。 |
+| token | Host 环境及认证传输，不有意写入恢复记录；Host 环境存储不在零留存承诺内。 |
+| 下载文件 | 用户拥有的任务文件，停用／卸载后保留。 |
 
-Artifact observations are atomic per `artifact_id`, with legacy `artifacts.json` readable and per-ID entries taking precedence. Retained records support recovery; they do not replace live service checks.
+新状态目录／文件请求 0700／0600 权限，不是加密，也不能隔离同 OS 账号或高权限软件。保持状态及备份私有，操作 key 避免敏感内容；在未知操作中删除状态会丢恢复事实，不会让重试更安全。
 
-Cleaning applies to bounded result projections and covered error paths: selected sensitive fields/keys, the configured token and its URL-encoded form, recognizable bearer strings, URL credentials and recognized sensitive URL parameters. Task-map IDs are added before cleaning. Covered JSON errors use fixed source labels rather than raw input fragments. Omission/truncation labels are also cleaned; this is not blanket filesystem-path removal.
-
-清理覆盖已识别的秘密和已接入的路径，不是万能秘密或个人信息识别器。未知凭据、其他编码、任意正文仍可能漏出；清理不会删除两端原会话、已有记录或下载文件内容。**公开前仍要人工检查**，不能承诺“已脱敏就能安全公开”。
-
-New state directories/files request restrictive 0700/0600 permissions. This is not encryption or isolation from the same OS account or privileged software. Keep state and backups private; use short non-sensitive task/operation keys. Deleting state while an operation is uncertain can lose recovery information without making a retry safe.
-
-## 7. Stop, remove and report / 停止、卸载与反馈
-
-To stop remote work, request cancellation explicitly and inspect the original team's state with the operator. Disable/uninstall does not do this for you or delete user files. Local/native cancellation behavior and remote task completion are separate facts.
-
-停止远端工作要明确取消并核对，不能用卸载代替。需要分享诊断时，去掉令牌、敏感服务地址、任务正文和用户文件内容，不上传未脱敏日志。疑似凭据泄露先私下联系运营者；公开仓库／反馈入口尚未发布，不能把目标仓库地址当成已可用入口。
-
-The new 0.2 real-Host loading, installation of the repaired adapter, independent UI switches, actual Host calls, later explicit messages, consumption, recovery, uninstall and user interaction need their own evidence. The author's repair, 20 official isolated-runtime calls and 17-file package readback are established within their recorded scope; they do not establish an installed dependency layout or general safety guarantee. The ACK/recovery/source-retry fixes have recorded regressions. Broader real-Host acceptance remains open; the author's two recorded adapter defects are no longer open.
-
-## 8. License boundary / 许可边界
-
-MIT covers **this connector only**. Each source project, dependency, author's adapter and optional backend keeps its own license and authorization requirements. A supplied LICENSE is preserved verbatim; absent text is not replaced with MIT. A provenance record or `license` string is a claim to inspect, not a grant made by the packager. Retain required notices and verify distribution rights before sharing a generated bundle.
-
-MIT 不替上游、适配工程、依赖或个人服务授予许可。来源与具体 LICENSE 原文应按实际权利范围保留；`NOASSERTION` 不是允许或禁止复用的结论，拿不准时如实说明，不能用包装成功代替许可判断。
-
-拟公开范围仅为独立新写的连接器、合法依赖声明和文档，不含公司／后端代码、私有证据或用户产物。当前未发布、Git remote 为空；代码权属、发布权限和外发授权仍待确认。
+停用／卸载不会替用户取消远端任务或删除产物。要停远端工作，应明确请求取消并核对实际状态。分享问题时提供已审查的最小诊断，去除 token、敏感地址、任务正文和用户内容，不上传原始私有日志。

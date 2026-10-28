@@ -1,87 +1,49 @@
-# Legion Bridge — installation and publication / 安装路线与发布状态
+# Installation and publication / 安装与发布路线
 
-**0.2.0 is not yet publicly released or listed.** No Git remote is configured. The public repository, reviewed public commit, public pinned-Git installation, self-hosted index, catalog PR/merge/listing and npm publication are all pending. The GitHub login `seanliii` has been verified, but the target `repos/seanliii/dsh-plugin-legion` last returned HTTP 404; code rights, publishing permissions and external-release authorization remain unconfirmed.
+当前是否已发布、实装或收录，只以[状态表](PLAN.md#当前状态)为准。以下是操作路线和模板，不是完成声明。
 
-**0.2.0 尚未公开发布、投稿或收录，Git remote 为空。** GitHub 登录身份 `seanliii` 已核实，但目标 `repos/seanliii/dsh-plugin-legion` 的只读检查仍为 HTTP 404；代码权属、发布权限及外发授权仍待确认。以下是路线与模板，不是已完成记录。
+## 分清三种分发方式
 
-Legion Bridge starts with open-source capabilities: `legion_discover`, `legion_source` and `legion_bundle` need no Legion token. Only optional task collaboration and `legion_call` require the user's authorized personal service. Packaging means wrapping **already-adapted code**, not automatically converting any library. A bundle keeps its native subplugins independently switchable and retains upstream license/provenance information; this connector's MIT license does not relicense the adapted code. See the [English quick start](../README.md) / [中文入门](../README.zh-CN.md).
-
-普通用户先找能力、读真实源码、完成适配再包装；不必先配置个人服务或服务 token。一包可包含按能力拆分、分别启停的原生插件，保留各自来源和许可证，不是任意项目一键转换；军团协作是可选项。
-
-Task-bound collaboration is **two-step**: `legion_call` executes the selected native tool but sends no HTTP/messages. After the enclosing Host result is visible, DSH may separately call `legion_message` with shareable text. Do not combine execution and a success message inside one `run_code`. The selected tool may have its own network behavior; this does not change the three publication routes below.
-
-本机调用与发送消息分开，新 v2 只保存调用状态元数据、同键不重做也不回放正文。DSH 看到最终结果后再决定显式发送；投递不代表消费，不自动唤醒终态任务。
-
-## 1. Choose the right route / 分清三条路线
-
-| Route / 路线 | What it provides / 提供什么 | npm requirement / npm 前提 |
+| 路线 | 提供什么 | npm 是否必需 |
 |---|---|---|
-| Official CLI, pinned public Git commit / 官方 CLI 固定 Git | Manual installation from an actual reviewed public commit; not a store listing. / 手动安装，不是市场收录。 | No npm publishing identity needed; dependencies may still need network. / 不需要 npm 发布账号。 |
-| Official Discover, self-hosted index / 官方 Discover 自托管索引 | Users add the author's index URL and install the declared Git source; no central approval or endorsement. / 用户自加索引，不是官方审核上架。 | Git-source index does not require publishing this package to npm. / Git 源不以发 npm 为前提。 |
-| 1024Store directory / 1024Store 目录 | A catalog entry can be browse-only. At the reviewed snapshot, offered one-click installs are **npm-only**. / 收录不等于有一键安装按钮。 | npm optional for catalog admission, required for that npm-only button. / 目录投稿可不发 npm，一键按钮另有要求。 |
+| 官方 CLI 固定 Git 提交 | 从已审查的公开提交手动安装，不是市场收录。 | 不要求将此包发布到 npm；依赖获取仍可能联网。 |
+| 官方 Discover 自托管索引 | 用户添加可信索引，安装其中声明的 Git 来源。 | Git 来源不要求此包先发 npm。 |
+| 社区目录／1024Store | 提交一份目录 JSON；无 npm 可 **browse-only（仅浏览仓库）** 收录。 | 不是投稿前提；一键安装以商店实际提供的方式为准。 |
 
-These descriptions refer to the pinned source snapshots below, **not a fresh live-store check**. The separate `anywhere-labs/dsh-desktop` community market is not the official DSH market; its provider manifest is not interchangeable with either index format.
+社区目录、姐妹站安装界面与官方管理器是不同系统。已保存的姐妹站源码中，常规安装按钮主要提供 npm 路线；底层官方 CLI／命令转发不能概括成“npm-only”。GitHub 元数据也不证明有 Git 一键按钮。不要把来源说明、按钮存在、实际安装或官方背书混为一谈。
 
-下面的规则有固定源码出处，不代表已核所有线上商店实例。社区 Desktop 的市场协议也是另一套机制，不能混用。
+## 固定 Git 安装
 
-Where README descriptions of GitHub support conflict, follow the actual offered-install implementation and its verified scope. Mentioning GitHub in prose or metadata does not establish a one-click Git install path. / README 对 GitHub 支持的文字有不一致时，以实际安装代码和已有核验为准，不扩大安装承诺。
-
-## 2. Pinned Git installation / 固定 Git 安装
-
-After the repository is public and the commit reviewed, replace the placeholder with its real full 40-character SHA:
+**先有真实公开仓库和经过审查的提交，再使用此模板。** 将占位符换为实际公开的完整 40 位 SHA，并选择自己的 profile：
 
 ```sh
 dsh plugin --profile web -w add 'github:seanliii/dsh-plugin-legion#<PUBLIC_FULL_COMMIT_SHA>'
 ```
 
-Keep `-w`, select the intended profile, and use the **published commit**, not a moving branch or invented hash. The commit must contain runnable JavaScript, its manifest and patch; installation must not depend on a missing build step. Earlier local Host checks are not evidence that this public Git target installs correctly.
+保留 `-w`。提交中必须已有可运行 JavaScript、`package.json` 和 `dsh.bundle.patch` 指向的 patch 文件；不能依赖缺失的构建产物。模板中的目标地址不是“仓库已发布”的证明。
 
-这是未来安装模板，当前不能照抄。公开后还要匿名读取固定提交中的文件，再独立验证安装；本地已有文件能运行，不代表公开 Git 链路通过。
+已有本地副本或 `legion_bundle` 生成包时，使用[原生本地安装](ECOSYSTEM.md#native-installation)：`target` 为 `file:` 加绝对目录，新装保持 `enabled:false`。这与公开发布是不同操作。
 
-For an adapter produced by `legion_bundle`, DSH instead uses the returned official `plugin_manager` `install_bundle` parameters for its workspace directory, initially disabled. This is local bundle installation, not publication of this connector or of the adapter. One bundle contains independently switchable native subplugins, not separate npm packages.
+## 官方 Discover 索引
 
-生成适配包的本地安装与连接器公开发布分开；包装器不负责投稿、上线或注册 npm 包名。
+启用可选官方市场后，用户自行添加可信索引 URL；连接器没有默认中央目录，也不自动添加索引。官方索引与社区目录 JSON 格式不能混用。
 
-## 3. Official Discover and a Git-source index / 官方 Discover 与 Git 索引
-
-The optional official experimental market ships disabled and has **no default index or central submission queue**. In Web **Plugins → More beside Experimental plugins → Custom plugin markets**, enable it, then add your chosen index URL in Discover. The current Agent must also have the native market tool available. Disabling the bundle removes Discover/the tool while retaining configured index sources.
-
-官方实验市场默认未启用。用户自行开启并添加可信索引；这叫兼容官方索引机制，不叫“官方市场已审核收录”。
-
-An author-hosted UTF-8 JSON index uses these fields:
-
-| Level / 层级 | Required / 必需字段 |
+| 层级 | 字段 |
 |---|---|
-| Root / 根 | `format: 1`, `title`, `plugins` |
-| Plugin / 插件 | `name: "dsh-plugin-legion"`, `versions` |
-| Version / 版本 | The released manifest's `version`, actual `publishTimestamp` as **a number of Unix seconds**, `source` |
-| Git source / Git 源 | `type: "git"`, `url: "https://github.com/seanliii/dsh-plugin-legion.git"`, published full 40-hex `commit`; optional `path` for a package subdirectory |
+| 根 | `format: 1`、`title`、`plugins` |
+| 插件 | `name`、`versions` |
+| 版本 | 实际包版本、`publishTimestamp`（Unix 秒数）、`source` |
+| Git 来源 | `type: "git"`、公开 `.git` URL、完整 `commit`；子目录包可另加 `path` |
 
-The intended connector package is at the repository root, so no `path` is needed. If declaring compatibility, match the released manifest's exact `engines.dsh: "0.2.1-rc.2"`. Do not invent a publication timestamp or substitute the documentation date for a release event.
+索引需以可匿名直接读取、无跳转的静态 JSON 提供；时间填真实发布时间，不编造索引地址或发布记录。兼容声明应与包的 `engines.dsh: "0.2.1-rc.2"` 一致。索引读取与实际 Git 安装分别验证。
 
-时间填真实发布时间，不以文档日期冒充。当前不提供虚构的索引发布地址或已发布 JSON。
+## 社区目录：只提交一份 JSON
 
-Serve the index at an anonymously readable static URL that succeeds without redirects. Verify index retrieval and actual Git-source installation separately. `legion_discover` queries only indexes already configured by the user; it does not publish an index or silently add one. A 1024 API response or community Desktop manifest is not the official index format.
+目标为 [imsai-sh/awesome-deepseek-harness-plugins](https://github.com/imsai-sh/awesome-deepseek-harness-plugins) 的 `main`，不是姐妹站源码仓库。按下方固定规则快照：
 
-索引能读与插件能安装要分别验；不能把其他商店 API 当作官方索引直接填入。
-
-## 4. 1024Store catalog submission / 1024Store 目录投稿
-
-Submission target: [imsai-sh/awesome-deepseek-harness-plugins](https://github.com/imsai-sh/awesome-deepseek-harness-plugins), branch **`main`**, not the store implementation repository. At the pinned catalog snapshot, the workflow is:
-
-投稿目标是**目录仓库的 `main`**，不是商店实现仓库。以下规则来自固定快照，真正投稿时应再核目标规则。
-
-1. Publish/review the actual repository first. Prepare one regular file: `catalog/plugins/seanliii--dsh-plugin-legion.json`; do not submit a symlink or edit generated READMEs.
-2. Keep exactly seven top-level fields: `$schema`, `id`, `name`, `repository`, `category`, `description`, `added`. The schema path is relative to the destination catalog. Do not add `source`, `npm` or SHA fields or append a commit to `repository`.
-3. Describe the implemented open-source path and optional collaboration honestly. State that adapter code must already be written, licenses retained, and native 0.2 verification is in progress. Add the documented `dsh-plugin` topic when the public repository exists.
-4. A non-draft PR adding only this file, passing `Plugin submission review / static-review`, is eligible for automated squash merge in the reviewed workflow. Updates/deletions require maintainer review; failures need correction.
-5. After merge, independently read the live entry and record PR, merge and listing observations. Merge is not installability or execution acceptance.
-
-先有真实公开仓库再投一条 JSON。测试通过、PR 合并、线上能看到、实际能安装和调用，各有自己的证据，不能互相代替。
-
-**Local draft prepared on 2026-10-28 (Asia/Shanghai; the UTC observation was on October 27), not a submitted or published entry.** The `added` value below is this draft's date. Reconfirm or replace it with the actual submission date immediately before creating a PR, and verify the public repository first.
-
-**这是上海时间 2026-10-28 准备的本地草稿，不是投稿或发布记录。** `added` 暂填本轮草稿日期；正式提交前按实际上海日期再核，跨日就更新，公开仓库也仍须实际验证。
+1. 公开仓库同一 revision 必须包含声明 `dsh.bundle.patch` 的清单及对应 patch；作者自行测试实际兼容性，并添加 `dsh-plugin` topic。
+2. 只新增 `catalog/plugins/seanliii--dsh-plugin-legion.json`；不得同时改生成 README、workflow 或脚本。
+3. 严格保留七字段，双语描述客观具体，`added` 填**实际投稿日**。下面只是结构模板，日期占位符不能直接投稿：
 
 ```json
 {
@@ -91,87 +53,29 @@ Submission target: [imsai-sh/awesome-deepseek-harness-plugins](https://github.co
   "repository": "https://github.com/seanliii/dsh-plugin-legion",
   "category": "tools",
   "description": {
-    "en": "Discover DSH tools and open-source capabilities, read public source at a pinned SHA, and package author-adapted code as independently switchable subplugins in one bundle. Optional Legion collaboration separates native tool execution from explicit legion_message delivery; upstream licenses are retained. Native end-to-end acceptance and publication remain pending.",
-    "zh": "搜索 DSH 原生工具与开源能力，读取固定 SHA 的公开源码，将作者已适配的代码包装为一包内可独立启停的多个子插件；可选军团协作把原生工具执行与显式 legion_message 投递分为两步，保留上游许可证。原生端到端验收与公开发布尚待完成。"
+    "en": "Discover DSH tools and public GitHub source, package author-adapted capabilities as independently switchable plugins, and optionally collaborate with a personal Legion service.",
+    "zh": "发现 DSH 工具和公开 GitHub 源码，将作者已适配的能力包装为可独立启停的插件，并可选接入个人 Legion 服务协作。"
   },
-  "added": "2026-10-28"
+  "added": "<YYYY-MM-DD>"
 }
 ```
 
-The static review checks entry fields/name/category/text/date, the public default-branch manifest, and existence of its `dsh.bundle.patch` file in the same Git tree. It does **not** pin an install commit, install dependencies, execute scripts, parse the patch, run the plugin, audit security or endorse quality.
+不要额外添加 `source`、`npm`、SHA 或 `rights` 字段，`repository` 保持仓库根 URL。目录元数据贡献采用 **CC0-1.0**，该目录的代码贡献采用 MIT；这不重新许可外部插件。连接器的 MIT 声明也不是上游分发权保证。
 
-静态审查仅核材料结构和必要文件存在；不是运行、安全或质量验收。
+目录仓库的 `npm run plugin:review` 对应 `scripts/review-plugin-submission.mjs`；完整审查还需要 PR/base/head 和 GitHub API 上下文，单独解析 JSON 不等于它已通过。非 draft、仅新增一条且通过 `Plugin submission review / static-review` 的 PR，在此快照的流程中会自动 squash merge；更新或删除需维护者审阅。
 
-The reviewed 1024Store implementation can retain GitHub install metadata or verification labels in its API without offering a Git install button. Its offered one-click route remains **npm-only**. A repository without a published npm package may be admitted **browse-only**. Neither manual official Git installation nor a self-hosted index changes that button's requirements.
+审查只检查材料和必要文件，不安装、构建、执行或评判第三方代码。发布、提交 PR、检查通过、合并、网站收录与真实安装分别确认。公开 Git 仓库可以满足无 npm 投稿的来源条件，**不是只要 push 就自动收录**。
 
-目录里写了 GitHub 元数据，不等于商店提供一键 Git 安装。无 npm 可收录、可浏览，但不能因此宣称一键安装完成。
+## 分发内容与许可
 
-This npm-only rule describes the **offered store buttons**, not every official installation path. In the reviewed store code, the page-command branch forwards syntactically validated official CLI arguments; the legacy id-only branch refuses GitHub source installs. The local official `@deepseek-ai/dsh-plugin-manager@0.2.1-rc.2` tool uses `action: "install_bundle"` and `target` (no `source: "npm"` parameter), and the manager accepts Git specs. Neither fact establishes that the store offers a Git button or that this connector's public Git installation has passed.
+只发布此独立连接器、合法依赖声明、许可和公开文档；不包含后端、私有证据／日志／凭据、用户产物或另行生成的示例包。最终 Git tree、npm 文件名单及包内链接须与真正发布的字节一致。
 
-npm-only 说的是商店提供的按钮，不是官方 DSH 不能装 Git。商店的新命令转发分支与旧的仅 ID 分支行为不同；官方原生工具用 `target` 接收安装规格，不能把 README 的 `source` 说法直接当成工具参数。以上均为源码边界，不是原生安装验收。
+npm 发布是可选路线，需要实际包名与发布权限；已获项目发布授权不代替这些事实。若选择 npm，发布后还需核对实际包内容及商店提供的安装目标，不能由 registry 条目推断同步完成。
 
-Catalog metadata contributions are **CC0-1.0**; code contributions to that catalog repository are **MIT**. This does not require external plugins or their upstream source projects to adopt MIT. This connector independently uses MIT; source/adapted-code/backend licenses remain separate.
+## 已核规则出处
 
-目录元数据的许可不覆盖外部代码；保留上游原许可，不擅自改授 MIT。
+本页复用固定源码，不声称本轮重新抓取了线上规则或验证了商店界面。正式投稿前只需复核届时差异：
 
-## 5. Optional npm publication / 可选 npm 发布
-
-An authorized publishing identity, package-name rights and a reviewed complete payload are prerequisites. Do not invent ownership, login, registry/tarball URLs or a successful release. npm is optional for the Git routes and catalog admission; it is required for the reviewed npm-only one-click route.
-
-没有 npm 发布身份不挡 Git 安装或目录投稿，但不能伪造包名权限或发布成功。
-
-If npm publication is chosen later, publish the actual package with its `dsh.bundle` metadata, then verify the live directory exposes the correct npm install method/target. Registry existence alone is insufficient; detection/sync may lag. Generated adapter packages are currently `private: true`; packaging one does not publish it.
-
-以后若选择发布 npm，还需核商店真实读回的安装方式和目标；包存在不等于商店已同步。
-
-## 6. Release contents and evidence / 公开内容与验证记录
-
-Keep only this independently written connector and its legitimate dependency declarations/docs in public Git and installation payloads. Exclude private validation records, logs, credentials, real personal filesystem paths, company/backend source and user artifacts. Recheck the **final** Git/packed file list and documentation links before a release; a previously checked payload does not certify later changes. Reuse existing tests for the same code snapshot rather than reporting an unperformed new run.
-
-公开包只含连接器，不包含私有运行现场。最终待发布字节、许可证和链接仍需核对；本次文档修改不是新一轮安装或验收。
-
-| Claim / 声明 | Current record / 当前记录 |
-|---|---|
-| Current offline evidence / 当前离线证据 | Node **v24.20.0**, `npm run check` and `npm test` both exit 0; **357/357 passed**, no failures/cancellations/skips, source hashes unchanged before/after; all 30 recorded files still match. Isolated tests and official rc.2 Runtime only. / 复用同字节集成证据，不冒充所有流或真实 Host 通过。 |
-| Implemented 0.2 interfaces / 已实现入口 | `legion_discover`, `legion_source`, `legion_bundle`, `legion_call`, plus existing collaboration tools. / 接口实现不等于完整用户旅程。 |
-| New native chain / 新增原生链 | **Installation attempted, failed**. After the earlier one-time `list_bundles` query, a separately approved official `install_bundle` with `enabled:false` returned `ERR_PNPM_ADDING_TO_ROOT`, `application:failed`, `changed:false`. The manifest stayed unchanged; the target remained uninstalled/unselected and the author's files matched. The failed process's pnpm executable/version was not recorded. / 两次单次许可均已消费，不授予重试、重启、启用或发布；不能断言那次进程用了 pnpm 9。 |
-| Specific ACK/recovery fixes / 两项已修复 | Explicit-message ACK embedded-data-URL redaction and legacy v1 delivery-ACK recovery are fixed with regressions in the current suite. / 保留历史投递，不回旧正文、不重发；不宣称所有格式或路径均已覆盖。 |
-| Source retry fix / 来源重试修复 | Same-session/instance/lifetime successful full-commit observations can be reused with original timestamps/hashes and explicit retrieval markers; errors are fetched again, current writes still use current permissions. Independent review **13/13**. / 最后保存的原生包装回执没有新字段，磁盘修复不等于旧 Host 已加载。 |
-| Author's `marked` dual-plugin adapter / 作者双插件 | The author repaired service injection and JSON output. Official rc.2 Loader/ToolRuntime made **20 actual calls: 14 business successes + 6 expected UNKNOWN_TOOL** results after unloading, including both unload orders. / 不代补业务；不是实际 Host 安装或界面开关验收。 |
-| Latest native package readback / 最新原生包读回 | All **17 files** match the successful `legion_bundle` receipt; 3 runtime source files match the executed version. Dependency resolution used local aliases, not a real installation. / `written_not_installed`、`execution_verified:false` 保留，不把读回改成假执行。 |
-| Isolated installer compatibility / 隔离安装兼容性 | Fixed Node v24.20.0 / DSH rc.2 / pnpm 11.7.0: 27 package-operation checks and a separate 33-check official manager public-API experiment matched expectations, using self-authored fixtures. No root shim, dependency aliases or script-policy override in the manager experiment. / 覆盖 pending、stale、准确样例批准、失败回滚和移除；没有原生工具审批、HMR 或真实插件功能验收。pnpm 9 根目录参数方案复现了未批准／拒绝脚本仍执行，已排除。 |
-| Local startup candidate / 本地启动候选 | Prepared, unapplied, not shipped. Official `runCli` package-manager injection; syntax and isolated `--version` checked only. / 仍需新的具体授权重启测试 Host 一次并重试一次禁用安装，不包含启用、额外脚本批准、永久工具权限或发布。 |
-| Author feedback and development references / 作者反馈与开发信息 | The two recorded adapter defects were repaired by the author and independently replayed. Official skill/reference pointers remain on demand, without automatic injection or code rewriting by the connector. / 从“反馈已排队”推进到“作者已修改、原反例已恢复”，不外推全部项目。 |
-| Actual task consumption and user experience / 消费与体验 | Not established by execution/delivery receipts; no automatic wake of terminal tasks. / 回执不代表已读或继续工作。 |
-| Public reviewed repository/commit / 公开仓库与提交 | Pending / 未完成 |
-| Public pinned-Git install / 公开固定 Git 安装 | Not performed / 未执行 |
-| Official index fetch and install / 官方索引读取与安装 | Pending / 待验证 |
-| Catalog PR, merge and live listing / 目录投稿、合并、收录 | Not completed / 未完成 |
-| npm publication and store button / npm 与一键按钮 | Not performed / 未执行 |
-| Code rights, publishing permissions and external-release authorization / 代码权属、发布权限与外发授权 | Still to be confirmed by the publisher; the MIT declaration is not proof of ownership or permission. / 独立新写和复用片段的分发权、账号权限及外发授权仍待确认。 |
-| Final payload, recovery, uninstall and real reverse proxy / 最终包、恢复、卸载与实服反代 | Remain outside the current acceptance claim / 仍不在当前验收声明内 |
-
-The integrated run was **2026-10-28 04:25:05–04:25:09 UTC / 12:25:05–12:25:09 Asia/Shanghai**. The same-byte source check reuses that saved result rather than claiming a rerun. Separate reviews, adapter calls and package/link checks are not added to its 357-test total. Earlier full-suite snapshots remain for traceability only.
-
-The manager experiment ran **2026-10-28 07:18:32–07:18:35 UTC / 15:18:32–15:18:35 Asia/Shanghai**. Its 33 checks are separate from the 27 package-operation checks and the integrated suite. Approved build policy persisted after failure and removal; `file:` approval selectors are not content hashes. Success without HMR was `restart-required/no-hmr`, not activation. A previous probe-only assertion failure is retained. See [the experiment and its limits](ECOSYSTEM.md); none of these checks grants a new native-tool approval or establishes publication.
-
-Record only actually executed results, with versions and appropriately redacted evidence. Source compatibility, local smoke, native install/active/called state, model consumption and a useful user result are separate facts. None should be inferred from another.
-
-## Pinned primary sources / 固定一手来源
-
-The marketplace references reuse the recorded read-only review from **2026-10-27 16:44–16:47 UTC / 2026-10-28 00:44–00:47 Asia/Shanghai**. Its saved comparisons showed no changes to the relevant catalog rules or store installation code. Separately, the fixed official `SAFETY.md` body and Git blob were verified on **2026-10-28 04:46:03 UTC**. That one-source check is not a new review of all marketplace rules or any live deployment.
-
-市场规则继续使用已有固定来源、提交对比和本地官方 rc.2；只新增核实官方固定 `SAFETY.md` 的有效正文，不称为所有线上实例的最新行为。本文 JSON 示例的双语说明沿用已对齐的本地草稿，草稿本身未改、未投稿；旧离线目录检查仅作追溯，不冒充新跑目录审查。正式投稿前另核届时的 `main`、实际日期与最终文稿。
-
-- [Official package/install guide](https://github.com/deepseek-ai/deepseek-harness/blob/22ddee3792402c3e70ec5f86a63c3e3e895a2f60/docs/user/develop/basic/publish.md)
-- [Official safety statement](https://github.com/deepseek-ai/deepseek-harness/blob/22ddee3792402c3e70ec5f86a63c3e3e895a2f60/SAFETY.md) — the verified 1,673-byte body still describes an experimental, unaudited developer preview; see [Security](SECURITY.md) for its hash and scope.
-- [Official experimental market bundle](https://github.com/deepseek-ai/deepseek-harness/blob/22ddee3792402c3e70ec5f86a63c3e3e895a2f60/packages/experimental/plugin-market-bundle/README.md)
-- [Official index format and hosting](https://github.com/deepseek-ai/deepseek-harness/blob/22ddee3792402c3e70ec5f86a63c3e3e895a2f60/docs/user/guide/plugin-market.md)
-- [Official Git-spec parser](https://github.com/deepseek-ai/deepseek-harness/blob/22ddee3792402c3e70ec5f86a63c3e3e895a2f60/packages/boot/plugin-manager/src/install-spec.ts#L21-L91)
-- [1024Store contribution rules](https://github.com/imsai-sh/awesome-deepseek-harness-plugins/blob/1145b331b263ac371053801bdd08ce9b3e3ed75c/CONTRIBUTING.md), [entry schema](https://github.com/imsai-sh/awesome-deepseek-harness-plugins/blob/1145b331b263ac371053801bdd08ce9b3e3ed75c/catalog/schema/plugin.schema.json), [review workflow](https://github.com/imsai-sh/awesome-deepseek-harness-plugins/blob/1145b331b263ac371053801bdd08ce9b3e3ed75c/.github/workflows/plugin-review.yml)
-- [1024Store offered install methods](https://github.com/imsai-sh/dsh-1024store/blob/0061a79c02c4f1cdcb9ba22f5b4b7c63220f65e9/web/worker/lib/install-methods.ts#L174-L195), [npm-only install component](https://github.com/imsai-sh/dsh-1024store/blob/0061a79c02c4f1cdcb9ba22f5b4b7c63220f65e9/web/src/components/InstallMethods.tsx#L22-L50), [command and legacy-id install branches](https://github.com/imsai-sh/dsh-1024store/blob/0061a79c02c4f1cdcb9ba22f5b4b7c63220f65e9/plugin/src/routes.ts#L618-L665)
-- [Community Desktop source contract](https://github.com/anywhere-labs/dsh-desktop/blob/77b01d15361d7112e7163f53c85e601ed82d6320/dsh-community-market/docs/catalog-provider-contract.md), [1024 adapter](https://github.com/anywhere-labs/dsh-desktop/blob/77b01d15361d7112e7163f53c85e601ed82d6320/dsh-community-market/src/adapters/dsh-1024store.ts)
-
-The official source snapshot contains rc.3 development metadata; it is a reference, not this connector's runtime. The declared target remains npm **`@deepseek-ai/dsh@0.2.1-rc.2`**. Fixed-source findings do not establish byte-for-byte parity with deployed stores or acceptance of the 0.2 native chain.
-
-官方固定源码与实际运行版本分开记录；不要把 rc.3 开发元数据写成已验运行环境，也不要从商店源码推出本插件已经收录。
+- 社区目录 `50684e4cde55722da7c6d19cf771b7e412b44ae2`：[CONTRIBUTING](https://github.com/imsai-sh/awesome-deepseek-harness-plugins/blob/50684e4cde55722da7c6d19cf771b7e412b44ae2/CONTRIBUTING.md)、[schema](https://github.com/imsai-sh/awesome-deepseek-harness-plugins/blob/50684e4cde55722da7c6d19cf771b7e412b44ae2/catalog/schema/plugin.schema.json)、[review workflow](https://github.com/imsai-sh/awesome-deepseek-harness-plugins/blob/50684e4cde55722da7c6d19cf771b7e412b44ae2/.github/workflows/plugin-review.yml)。CONTRIBUTING blob：`40a6acc056484b3b315a5df37cce92a75fcc35d4`。
+- 姐妹站 `0061a79c02c4f1cdcb9ba22f5b4b7c63220f65e9`：[安装方法](https://github.com/imsai-sh/dsh-1024store/blob/0061a79c02c4f1cdcb9ba22f5b4b7c63220f65e9/web/worker/lib/install-methods.ts)、[原生命令分支](https://github.com/imsai-sh/dsh-1024store/blob/0061a79c02c4f1cdcb9ba22f5b4b7c63220f65e9/plugin/src/routes.ts)。
+- 官方参考快照：[包发布](https://github.com/deepseek-ai/deepseek-harness/blob/22ddee3792402c3e70ec5f86a63c3e3e895a2f60/docs/user/develop/basic/publish.md)、[市场索引](https://github.com/deepseek-ai/deepseek-harness/blob/22ddee3792402c3e70ec5f86a63c3e3e895a2f60/docs/user/guide/plugin-market.md)。该源码快照含较新开发元数据；本插件运行契约以安装的 **npm rc.2** 为准。

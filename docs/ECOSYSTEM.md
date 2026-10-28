@@ -1,180 +1,100 @@
-# 开源项目、DSH 插件和军团，怎么一起工作
+# 开源能力如何接入 DSH
 
-Legion Bridge **0.2.0** 不接管 DSH。它像一个有回执的转接头：DSH 继续决定下一步、使用工具、请求权限和保留会话。发现能力、读取公开源码、包装作者已适配的代码不需要 Legion token；只有可选的任务协作（包括 `legion_call`）需要个人服务配置和授权。本机执行与发回任务是两个明确动作，不会执行后自动发送。
+Legion Bridge 0.2.0 提供发现、读源和包装工具，不替 DSH 决定任务怎么做，也不是任意应用的一键转换器。前三项无需 Legion token；可选军团协作才需要自己的兼容服务与个人令牌。[当前发布与实装状态](PLAN.md)单独维护。
 
-## 从一句话开始
+## 从需求到可用能力
 
-你可以在启用了本插件的 DSH 会话里说：
+在启用了连接器的 DSH 对话中，可以说：
 
-> 帮我找能做这件事的现成插件。如果没有，研究这个 GitHub 仓库，把其中适合的能力做成可独立开关的 DSH 插件，安装后实际验证。
+> 找能满足我需求的现成工具。没有合适插件时，读这个公开仓库的真实接口和许可，把适合的能力适配为可独立开关的 DSH 插件；安装前先给我看代码和依赖。
 
-或者：
+| 需要做什么 | 可用入口 | 保留的事实边界 |
+|---|---|---|
+| 找本机现成工具 | `legion_discover`，`source: "installed"` | 只列当前 Agent 可见工具，不是全机器安装清单。 |
+| 找原生插件 | `legion_discover`，`source: "market"` | 只查用户已配置的原生索引；不可见、未配置、失败与空结果分开。 |
+| 找公开项目 | `legion_discover`，`source: "github"` | 有限的 GitHub 仓库搜索，不按描述保证能力或安装成功。 |
+| 看接口、依赖、许可 | `legion_source` 的 `inspect`／`read` | 固定 commit，返回真实来源与有限文本，不执行仓库内容。 |
+| 包装已写好的适配 | `legion_bundle` | 通过原生 `write` 写工程，不代写算法、不安装、不执行。 |
+| 安装、开关和移除 | 官方 `plugin_manager` | 遵守当前原生权限；一包安装，各子插件分别开关。 |
 
-> 让军团完成这个任务。需要我本机已有的工具时，把要求交回来，结果仍然记在原任务里。
+这些是可组合入口，不是强制流水线。已有插件合用就直接复用；CLI、MCP、skill 或依赖服务需要作者按真实接口接线，连接器不会凭项目名猜一个通用适配器。账号、模型文件、GPU 或外部服务需求不会因包装而消失。
 
-DSH 可以按需读取 `legion-ecosystem` 技能。技能说明入口和事实边界，不安装新的调度器，也不强制每个任务经过固定流水线。
+## 读源与许可
 
-## 提供的入口
+`inspect` 将分支／标签固定成 commit，并提供目录、README、清单和许可证预览。随后用 `read` 的完整 `commit`、相对 `path` 读取关键文件；分页按 **UTF-8 字节**，继续时使用返回的 `next_offset`。
 
-| 入口 | 做什么 | 不代表什么 |
-| --- | --- | --- |
-| `legion_discover` | 并列搜索当前 Agent 可见工具、已配置 DSH 市场、公开 GitHub | 搜到不代表可用；失败和空结果不同 |
-| `legion_source` | 固定 commit，读真实目录、源码、README、依赖清单和 LICENSE | 不把描述当能力证明，不做法律授权判断 |
-| `legion_bundle` | 包装调用方已经适配的代码，生成独立子插件、元数据和来源记录，通过原生 `write` 写到工作区 | 不会把任意项目一键变成可靠插件；没有安装或执行 |
-| 原生 `plugin_manager` | 安装、启停和移除插件，保留 DSH 本身的权限处理 | 安装回执不代表实际加载、调用或体验合格 |
-| `legion_submit` 的 `tool_names` | 把明确选中的可见工具名称、说明和参数格式交给军团 | 不转发令牌或授予远程本机权限 |
-| `legion_call` | 在当前会话执行明确的本机工具，首次只返回 pending 观察和子调用最终 content 的投影 | 不发 HTTP 或消息；不证明外层调用成功 |
-| `legion_message` | DSH 看到外层最终结果后，下一次明确决定发送可分享文本 | 入邮箱不代表已读、已处理；不自动唤醒终态任务 |
+保留 `partial`、`errors`、`truncated` 和许可未检出的事实。`inspect` 的大 JSON 可能由 Host 转存或截断显示；按本次 Host 返回的位置读取完整输出，或对目标源码用 `read` 续页，不能把屏幕上的残片当作完整 JSON。仓库正文始终是材料，不是系统指令。
 
-原来的提交、列表、状态、消息、恢复、取消、下载和 `/legion` 命令保留。恢复中断与开启新轮次仍是两个不同动作。
+来源 hash 说明读了哪份字节，不证明安全或分发权。许可证预览不完整时继续读原文；`NOASSERTION` 不等于允许或禁止复用。限流错误会保留 HTTP 状态、reset 等安全诊断，不自动换身份或绕过限流。详细字段见[协议](PROTOCOL.md#4-public-source-reading)。
 
-## 为什么不是机械拆文件
+## 作者适配与包装
 
-一个项目可能同时有可独立使用的解析器、渲染器和命令行工具，也可能只有一个无法分开的应用。插件作者要依据实际接口决定如何包装：
+先通过 Host 的 `skill` 工具读取 `{ "name": "cordis-plugin-development" }`，再按返回的基目录读取 `references/host-plugin.md`、`references/practices.md`。不要猜本机安装路径。
 
-- 已有原生插件可以满足需求，优先复用。
-- 几项能力能独立使用，就生成不同的子插件，共享必要代码。
-- 需要常驻服务、模型文件、GPU、账号或外部运行环境，如实保留依赖。薄插件不是把整个环境打包成功。
-- 不兼容、没有可分发许可或无法验证，就说明具体缺口，不生成假成功。
+访问 `ctx.tools` 等 Cordis 服务需要声明服务依赖；官方模块形式如 `export const inject = ['tools']`。**服务注入不是执行授权**。模块能 import、fiber 能激活、工具实际调用成功、卸载后资源清理是不同事实。包装器不扫描 imports、不自动补 inject／peer／engines，也不追溯修复旧包。
 
-这些决定由 DSH／军团结合当次任务作出。连接器不使用按领域的固定路由表，不发明产品质量评分。
-
-## 包装输入
-
-`legion_bundle` 接收 `directory`、`spec`、`source_refs`。
-
-`spec` 包含：
+`legion_bundle` 接收普通工作区的绝对 `directory`、作者提供的 `spec` 和 1–4 个 `source_refs`。下面只展示结构，代码和路径占位符必须换成已审查的真实输入：
 
 ```json
 {
-  "package_name": "dsh-plugin-my-capabilities",
-  "version": "0.1.0",
-  "description": "Actual adapted capabilities",
-  "plugins": [
-    {
-      "id": "analyze",
-      "title": "Analyze",
-      "description": "Describe what this capability actually does",
-      "entry": "analyze.js"
-    }
-  ],
-  "files": [
-    {
-      "path": "analyze.js",
-      "content": "Actual, reviewed Cordis plugin implementation"
-    }
-  ],
-  "dependencies": [
-    { "name": "@deepseek-ai/dsh-tools", "version": "0.2.1-rc.2" }
+  "directory": "<absolute workspace output directory>",
+  "spec": {
+    "package_name": "dsh-plugin-my-capabilities",
+    "version": "0.1.0",
+    "description": "Two independently usable adapted capabilities",
+    "plugins": [
+      { "id": "analyze", "title": "Analyze", "description": "Analyze text", "entry": "analyze.js" },
+      { "id": "render", "title": "Render", "description": "Render text", "entry": "render.js" }
+    ],
+    "files": [
+      { "path": "analyze.js", "content": "<reviewed ESM adapter source>" },
+      { "path": "render.js", "content": "<reviewed ESM adapter source>" }
+    ],
+    "dependencies": [
+      { "name": "@deepseek-ai/dsh-tools", "version": "0.2.1-rc.2" }
+    ]
+  },
+  "source_refs": [
+    { "repository": "<owner>/<repo>", "ref": "<full 40-hex commit>", "paths": ["src/index.js"] }
   ]
 }
 ```
 
-上面只说明结构，`content` 不是可运行示例。入口必须是调用方已编写的实际 ESM 插件。
+来源来自真实读取；符合条件的固定 commit 观察可在同会话、同插件生命周期内复用，并保留原时间、hash、截断和 `source_retrieval` 标记。复用不代表当前联网检查或新许可，每次仍校验当前 spec／目录并走原生写权限。完整边界见[包装协议](PROTOCOL.md#5-package-authored-adapters)。
 
-`source_refs` 是 1–4 个 `{ repository, ref?, paths? }`。优先提供已读的完整 commit；每个来源最多额外记录四个关键文件。工具会真实获取来源和许可证，或复用同一原生会话／插件实例／生命周期中、同仓库输入／完整 commit／路径列表的成功观察，不接受调用方编造的 SHA-256。来源正文、目录和文件可能截断，结果保留该事实。
+生成包包含独立子路径 exports、原生条目、名称／说明、图标、来源记录和说明文件。它是一整个 `private: true` 的本地包，不是多个独立 npm 包；依赖只接受明确的固定版本。调用方提供的 `LICENSE` 原文会保留，没有原文就不生成 MIT，也不由来源元数据推断分发权。
 
-重试不是从头失忆，也不是沿用旧权限：成功来源观察最多在内存保留 16 组／1 MiB，卸载或插件生命周期中止就清除；一次普通调用取消不会抹掉此前成功观察。分支、标签、短 SHA、缺省 ref、部分成功或带错误的观察（包括 `license.error`）下次重新获取。成功但截断的预览可以复用，仍标截断，不冒充完整阅读。每次检查当前适配代码、目录并逐文件走原生写权限；不缓存作者代码、输出目录、原生结果或审批。
+输出目录**不带 `file:`**。原生 `write` 可能覆盖同名文件；失败时保留已写部分，不自动回滚。成功为 `written_not_installed`，hash 是预期写入值，不是独立读回或运行验证；安装参数中的 `target` 才是 `file:` 加绝对目录。
 
-工具返回 `source_retrieval: "fetched" | "reused_pinned_facts"`，`provenance.json` 每项带对应 `retrieval`。复用时保留原 `fetched_at` 与整文件 hash，不说成新抓取、新权限或许可评估。纯函数 `buildBundle` 仍不联网、不碰文件、不使用这份缓存；详见[协议](PROTOCOL.md#5-package-authored-adapters--包装作者已完成的适配代码)。
+## Native installation
 
-包装器生成：
+先审查实际文件、依赖与许可，再把包装回执的 `install.arguments` 交给官方 `plugin_manager`。新装建议 `enabled: false`：
 
-- 每个能力的独立子路径 export 和原生插件条目，可分别启停；安装单位仍是整个 bundle，不是各自独立的 npm 包；
-- 插件名称、说明与原创图标；
-- `package.json`、`cordis.patch.yml`；
-- 来源记录、许可边界说明和操作说明。
+```json
+{ "action": "install_bundle", "target": "file:<absolute bundle directory>", "enabled": false }
+```
 
-原样保留调用方提供的 LICENSE；不会擅自套上 MIT。依赖只能声明固定完整版本；没有自动安装脚本。代码本身及依赖仍需原生开发流程检查，这些格式检查不是沙箱或恶意代码检测器。
+`file:` 走包安装；裸目录可能变成开发 `link:`，不会递归安装链接目标依赖。本地路径可变，不是固定内容标识。已被选中的旧 bundle 不会仅因重装传 `enabled:false` 就自动停用，应先查实际状态。
 
-文件由原生 `write` 创建，不能写 DSH 配置目录。若中途失败，返回已经写入的部分，不假装回滚。成功返回 `written_not_installed`，并附原生安装参数。列出的 hash 是预期写入内容，仍需独立读回及实际调用确认。
+| 操作 | `plugin_manager` 参数要点 |
+|---|---|
+| 查整包 | `action: "list_bundles"`；分页结果为 `entries`、`total`、`nextOffset`。 |
+| 整包启停 | `action: "set_bundle"`，`target` 为返回的包名，`enabled` 为所需状态。 |
+| 查运行条目 | `action: "list_plugins"`；读取真实 **`entryId`**，不要用声明 `rowId` 或模块名代替。 |
+| 单能力启停 | `action: "set_plugin"`，`target` 为该 `entryId`，`enabled` 为所需状态。 |
+| 移除整包 | `action: "remove_bundle"`，使用实际包名；不等于删除工作区产物或取消军团任务。 |
 
-### 原生开发参考：导入不等于激活
+禁用 bundle 可以没有运行条目；整包启用会尝试加载默认启用的各行。无需把所有 patch 行预先写成 `disabled:true` 才能禁用新装的整包，但各项默认值也不证明它们已成功激活。保留管理器返回的 `application`、`changed`、`nextStep`、警告和重启要求；加载失败不应被说成已回滚选择。
 
-用 Host 的 `skill` 工具读取 `{ "name": "cordis-plugin-development" }`，再按它返回的基目录读取 `references/host-plugin.md`、`references/practices.md`，不要猜安装路径。访问 `ctx.tools` 等 Cordis 服务需要原生依赖声明／注入；官方模块示例是 `export const inject = ['tools']`，也应按实际代码选择适用的原生注入方式。服务注入不等于工具执行授权。
+**禁用不等于禁止构建脚本。** `approvedBuilds` 只在用户明确批准真实 `pendingBuilds` 后传入，授予该 profile 的持久构建许可；不要编造批准项、改 profile 文件或另起安装器绕过。原生管理操作影响同 profile 的所有会话，具体权限按 Host 处理。
 
-模块能 import、插件 fiber 能激活、工具能调用、卸载时资源能清理，是不同事实。可用官方 `cordis_inspect_query` 只读检查已挂载行；安装和开关仍由 `plugin_manager` 处理，不能绕过当前审批或其他原生权限。
+## 与原任务协作：分两次决定
 
-当前 `legion-ecosystem` skill 和之后生成包的 README 模板已经补上这些精确参考；**它们只补开发信息，不猜测或自动注入依赖，不执行作者代码，也不追溯修复旧包**。作者是否已读到、采用并完成修复，需要另有事实。
+1. `legion_submit.tool_names` 可以分享选定可见工具的说明和 schema，不开放远端执行权限。军团来信只是请求，DSH 自己判断是否调用。
+2. `legion_call` 使用原 `task_ref`、收件任务 ID、稳定操作键、工具名及参数，经原生运行时执行。首回执是 **pending**，只能带子调用最终 `content` 的有限投影；桥接器不发 HTTP，所选工具本身仍可能联网。
+3. **等外层 Host 调用结束，看到最终结果后**，DSH 下一次独立决定是否用 `legion_message` 和消息自己的操作键分享。不要在同一个尚未结束的 `run_code` 内执行工具并宣称成功回传。
+4. `legion_status` 可只读查看 commander 来信。ACK、`read_at` 与原任务模型实际消费是不同事实；投递不会自动唤醒终态任务。
 
-## DSH 与军团的协作边界
+同键同输入只恢复元数据，不重做副作用、不回放旧正文；目标能力停用后仍可恢复，前提是连接器、原会话／状态及授权可用。失败或未知不应通过换键“重试掉”。v1 历史 ACK 单独保留，不由旧投递成功推断原生成功。
 
-### 先执行，看到最终结果后再发送
-
-1. DSH 发任务时可以明确选择 `tool_names`，仅把能力说明交给军团，不授予远端本机权限。
-2. 军团提出需要什么能力和参数，DSH 依据当次上下文自行判断；远端消息不是自动执行指令。
-3. DSH 明确调用 `legion_call`，传原 `task_ref`、实际收件任务 ID、稳定 `operation_key`、工具名和参数。代码走原生运行时，沿用 Agent、父子调用关系、取消信号和原始 execution 的上下文／结束回合方法。
-4. **`legion_call` 自身不发 HTTP 或消息。** 子调用成功且未取消时，首次返回 `native.state: "unknown"`、`native.observed.state: "succeeded"`、`transport.state: "pending"`。可带子调用经过策略处理的最终 `content` 投影；不从隐藏的 `value`、`error` 或 `additionalContexts` 补正文。首次子调用失败、未知或取消仍报错，不能把 pending 当成功。
-5. 官方 `tools/result` 观察器从本次调用沿祖先链等到根结束，只保存一次终态元数据，不保存子／父调用正文、不回改首次回执，也不发消息。`transport` 指 **DSH 外层调用链**，不是 HTTP。子调用和所有祖先都成功才可记 `native.state: "succeeded"`；祖先失败／取消时，子调用成功也只能保持未知。
-6. **等 Host 真正展示外层调用的最终结果后，DSH 下一次独立决定是否调用 `legion_message`。** 使用原任务、收件人和消息自己的稳定操作键，只发送实际可见、允许分享的结果。不要把执行和成功反馈写在同一个 `run_code` 或仍未结束的父调用里；这是使用协议，不是对任意程序的硬拦截保证。
-
-两次请求可以这样表达，第二句的前提是第一步的外层调用已经结束：
-
-> 先用选定本机工具帮助原任务，展示最终结果；现在不要发消息。
-
-> 现在把刚才 Host 实际展示的可分享结果发给原任务，失败和未知也如实说明。
-
-执行、显式发送的回执、军团实际消费分别核对。**新 v2 操作**的 `legion_call.delivery` 始终为 `not_attempted`、`automatic: false`、`method: "legion_message"`；后来单独发送不会更新它；这不表示旧 v1 的历史投递可以被抹掉。
-
-### 恢复只读状态，不重做、不回正文
-
-- 同一任务下同一个 `operation_key`、同参数，只恢复状态元数据，不重新执行本机副作用，也不回放旧结果正文；变更参数会失败。
-- 目标能力插件停用／卸载后仍可读既有元数据，前提是 **Legion Bridge 自身、原会话／状态和授权仍可用**。这不是卸载连接器后还能调用它的承诺。
-- 只有预约、没有结果时保持未知，可能仍在运行或已中断；不能换键绕过。v1 旧记录没有祖先终态证据，旧“成功”不能恢复成已成功；明确的旧失败可保留。
-- v1 投递 ACK 恢复已修复：有效 `received`／`rejected`／`unconfirmed` 作为独立历史事实保留，标记 `historical: true`、`attempted_now: false`；缺失、不可读或畸形记录保持 `unconfirmed`。仅回白名单元数据，不重发、不改盘，不据此推断原生成功或模型消费。
-- 本地去重不等于跨机器 exactly-once。新工作用明确续作；终态任务不会因收到消息自动恢复。
-
-### 本机图片与远端文本分开
-
-代码把原生图片通过本地 context 转交 DSH，同时传递 `additionalContexts` 和结束回合信息；官方 rc.2 Runtime 隔离证据已核对本地转交，真实 Host 是否最终交给作者仍需验证。桥接投影和显式分享只限**限长、脱敏文本／结构化数据**，投影预算为 12,288 字节，不含图片／音视频二进制和 data URL。普通长文本和摘要不再被当成 base64 猜测删除，仍按预算截断；显式媒体／凭据省略保持。不能把本机上下文转交说成远端完整看到了原图，也不能用远端不传图片来掩盖本机丢图。
-
-所选原生工具自身可能联网；“不发 HTTP”描述的是 `legion_call` 桥接实现，不是任意工具的沙箱保证。连接器不监听并自动执行远端命令，也不另建后台协作调度器。详细状态和两次调用参数见[协议第 6 节](PROTOCOL.md#6-return-one-native-result-to-a-task--把一次原生结果交回任务)。
-
-## 安装与复核
-
-需要 DSH 已启用原生 `write`、`plugin_market` 或 `plugin_manager` 等相应工具。本插件只使用当前 Agent 可见的工具；缺少时返回明确提示，不偷用隐藏服务。
-
-官方插件管理器安装生成的目录时，先保持禁用，再按需要启用对应能力。保留 `application`、警告、构建审批和需要重启等返回事实。连接器不填造 `approvedBuilds`，也不私自运行另一套安装器。
-
-**禁用不等于不运行安装脚本。** `enabled:false` 只表示不激活 bundle；依赖的安装脚本仍由安装器策略管理。官方 `approvedBuilds` 需要用户明确同意准确的 `pendingBuilds` 项，写入的是该 profile 的持久构建许可，不是一次工具授权。`file:` 来源选择键不是内容 hash，后续同路径内容可能改变；不能因旧许可或旧 hash 就默认当前代码可信。
-
-至少分别核对：
-
-- 包中的来源、依赖和代码；
-- 实际安装的字节／版本；
-- 真实插件列表及独立开关；
-- 原生工具调用的结果和失败；
-- 若参与协作，Host 最终结果、下一次显式消息、原任务收到和实际消费分别核对；
-- 用户实际会操作的界面。
-
-公开仓库、固定版本安装、自托管索引、社区目录投稿和市场收录，分别记录。详情见 [市场计划](MARKET.md)。
-
-### 2026-10-28 安装兼容实验
-
-在早先的一次 `list_bundles` 查询后，作者另获一次官方 `install_bundle` 授权并保持禁用；真实尝试返回 `ERR_PNPM_ADDING_TO_ROOT`、`application:failed`、`changed:false`。独立读回确认 profile 清单未变、目标依赖／选中项／安装目录不存在、作者的 17 文件仍匹配。失败子进程未记录可执行文件和版本，不能断言那次一定使用 pnpm 9，也不能把这些文件检查扩大成整个 profile 树毫无变化。
-
-随后仅在临时 HOME／profile／缓存／store、自写零依赖样例和回环 registry 上实验，固定 **Node v24.20.0、DSH 0.2.1-rc.2**：
-
-| 范围 | 观察结果 | 不可外推 |
-|---|---|---|
-| pnpm 9.15.4 加根目录参数的备选方案 | 25 项检查符合“不兼容复现”的预期：未批准、明确拒绝的样例脚本仍执行，因此排除该方案 | 25 项不是安全通过，也不能证明真实失败进程的版本 |
-| pnpm 11.7.0 包操作层 | 27 项符合预期，保留脚本批准／拒绝语义，无需根目录参数补丁 | 不是原生工具审批或真实 Host 验收 |
-| pnpm 11.7.0 官方 manager public API | 原样 `Context`／`Loader`／`PluginManager` 的 33 项符合预期；安装、准确 pending、stale 拒绝、只批准自写样例、脚本失败和正规移除都实际执行 | 无 HMR，样例 patch 为 `[]`，没有插件功能入口运行；不包括原生 `plugin_manager` 工具审批 |
-
-manager 实验没有依赖解析别名、root shim、`ignore-scripts` 或脚本策略覆盖。未批准脚本不执行，失败后清单／lockfile 恢复，但 workspace 保留 pending，所以 `changed:true` 不等于已经装好。混入不存在的批准键时，全批批准被拒，四份检查文件未变、pnpm 未启动；官方仍发 `plugin-manager/changed` 通知，因此不是“完全没有事件或任何副作用”，也不证明并发／崩溃原子性。
-
-准确批准自写样例后，脚本真实执行，包仍禁用。故意失败的样例实际退出 7，manager 报失败并恢复清单／lockfile，**构建许可仍保留，随后移除其他包也没有撤销这些许可**。回滚不是脚本沙箱，不会撤销任意已发生的脚本副作用。成功结果为 `restart-required/no-hmr`，不是启用成功。回环 registry 未收到请求，仅说明该端点的记录为空，不是系统级网络审计。
-
-首轮 manager 实验在卸载最后依赖后，probe 错把可能缺省的 `dependencies` 当作必有字段而报错；仅修正这处断言后完成 33 项，旧失败保留，不改写为“首轮也全绿”。这三组结果彼此及与集成套件不相加。
-
-**当前只准备了未生效的本地启动候选。** 它通过官方 `runCli({ packageManager: ... })` 指定已测安装器，不替换官方库、不改变脚本策略。Python 只检查 AST，JS 只检查语法与隔离 `--version`；版本命令在 profile 启动前退出，不证明 Host 启动或安装链已恢复。候选不进入公开连接器包，也不会由插件静默修改用户环境。
-
-两次单次原生许可均已消费。重启当前测试 Host 一次、让原作者经官方审批重试一次 `enabled:false` 安装，仍需新的明确授权；不包含启用、额外构建脚本批准、永久工具权限或发布。遇到新的 pending、异常或所需权限变化，应保留现场再说明，不能扩大授权或自行换路重试。
-
-## 当前验证边界
-
-运行目标仍固定官方 **rc.2**。集成运行时间为 **2026-10-28 04:25:05–04:25:09 UTC／同日 12:25:05–12:25:09 Asia/Shanghai**：Node **v24.20.0** 下 `npm run check` 与 `npm test` 均退出 0，**357/357 通过**，源码前后哈希一致，30 份代码／测试／清单文件仍匹配。复用这次同字节证据，不冒充重跑全套。ACK 脱敏、v1 历史投递 ACK 恢复和固定来源重试均已纳入回归；另有来源重试独立 **13/13**、较早 native 主链正文边界 **4/4**。专项数字不相加，也不扩大为所有流或真实 Host 验收。
-
-**作者已经自行修复 `marked` 的服务注入和 JSON 输出问题。** 独立官方 Loader／ToolRuntime 的 20 次实际调用中，14 次业务成功、6 次为卸载后的预期 `UNKNOWN_TOOL`，两种卸载顺序都经过检查。随后原生 `legion_bundle` 生成的 17 文件包已独立读回，3 份业务源码与已执行版一致；没有在测试中代补作者代码。依赖解析用了已有本地依赖的别名，所以仍缺真实安装后的布局和 Host 调用证据。
-
-后续一次获准禁用安装已经失败，兼容候选的隔离结果如上；不能继续沿用旧单次授权。磁盘修复不能代表旧 Host 已加载，最后保存的原生包装回执仍没有新 `source_retrieval`。真实安装、独立启停、Host 调用、下一次显式消息和原任务实际消费仍待分项验收。公开范围仅独立新写的插件，未发布、Git remote 为空，权属／发布权限／外发授权仍待确认。详见[当前计划与待验收](PLAN.md)。
+桥接文本不传完整图片／音视频；本地 DSH 图片及上下文转交不等于军团已收到媒体或完成视觉判断。新 v2 回执中的 `delivery: not_attempted` 只说明桥接器没有自动发送，后续消息有独立 ACK。详见[两步协议](PROTOCOL.md#6-two-step-collaboration)及[安全说明](SECURITY.md)。

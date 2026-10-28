@@ -1,214 +1,113 @@
 # Protocol / 协议
 
-This is the **0.2.0** connector contract, not a promise that every Legion deployment implements the same API. The final integrated record reports **357/357 passed** on Node **v24.20.0**: `npm run check` and `npm test` both exited 0, with unchanged source hashes before/after and no failures, cancellations or skips. Its scope is isolated tests and the official rc.2 Runtime, not a real Host or end-to-end acceptance.
+本页描述 **Legion Bridge 0.2.0** 的代码契约，不保证所有 Legion 部署都实现相同 API。DSH 保留主循环和工具决策；连接器不增设调度器或质量裁判。入门见 [English](../README.md)／[中文](../README.zh-CN.md)，实装与发布进度只在[状态表](PLAN.md)维护。
 
-运行时间为 **2026-10-28 04:25:05–04:25:09 UTC／同日 12:25:05–12:25:09 Asia/Shanghai**。当前全套包含 ACK 脱敏、v1 恢复、两步终态与固定来源重试回归；30 份代码、测试和清单文件仍与该记录匹配，复用同字节证据，不冒充重跑全套。真实 Host 旅程和后续显式消息**仍待验收**。
+## 1. Runtime and native tools
 
-For short examples, start with the [English README](../README.md) or [中文入门](../README.zh-CN.md). Discovery, public source reading and packaging need no Legion token. Optional task collaboration, including the task-bound `legion_call`, still needs personal service configuration and authorization even though `legion_call` sends no HTTP.
+清单要求 Node `>=24.9.0`、`engines.dsh: "0.2.1-rc.2"`；peers 为 `@deepseek-ai/dsh-llm`、`@deepseek-ai/dsh-tools` 的精确 `0.2.1-rc.2` 及 `@deepseek-ai/schemastery: "~3.18.5"`。`dsh.bundle.patch` 指向 `./cordis.patch.yml`，连接器自身只插入 `id: legion`、`name: dsh-plugin-legion` 一行；它与生成的多能力包是不同安装件。
 
-DSH 自己决定下一步，连接器不接管主循环，不强制固定任务流程，也不评分作品质量。
+- `write` 负责工作区写入，`plugin_manager` 负责安装／启停；市场发现使用可选、当前 Agent 可见的 `plugin_market`。
+- 有 `skills` 服务才注册 `legion-ecosystem`；有 `commands` 才注册 `/legion` 命令。
+- 原生委托使用 `ctx.tools.execute({ callId, rootCallId, parent: exec.token, agent: exec.agent, signal: exec.signal, name, arguments })`，不直调工具执行体。signal 同时响应原生取消和连接器卸载，`deferContext`／`concludeTurn` 绑定原始 execution；这些对象不发给 Legion。
+- 成功图片内容经本地 user context 转交，`additionalContexts` 和结束回合信息沿原生路径转交，不等于远端文本消息携带媒体。
 
-**Implementation and acceptance are separate / 实现与验收分开：** current code binds context/turn methods to the original execution, forwards local image contexts, waits for ancestor outcomes before saving terminal metadata, and removes messaging from `legion_call`. Source failures retain bounded diagnostics. These changes do not prove that the original Host journey now passes.
+## 2. Model tools and commands
 
-作者已自行修复 `marked` 双插件的服务注入和 JSON 输出问题；官方 rc.2 Loader／ToolRuntime 的 20 次实际调用为 14 次业务成功、6 次卸载后预期 `UNKNOWN_TOOL`。最新原生包装的 17 个文件已独立读回，3 份运行源码与被测字节一致；这不等于真实安装后的依赖布局已验。一次 `list_bundles` 许可已用于查询，重复查询未获批，不包含安装／启用／重启。磁盘修复也不证明旧 Host 已加载：最后保存的原生包装回执没有下文新增的 `source_retrieval`。具体未验项见 [PLAN](PLAN.md)。
+共 **11 个模型工具**；调用身份由 Host 提供，不由模型参数指定。发现、读公开源和包装无需 Legion token；其余任务协作需要个人服务与授权，包含不发 HTTP 的 `legion_call`。
 
-## 1. Runtime and native tools / 运行环境与原生工具
-
-The connector manifest declares Node `>=24.9.0`, exact `engines.dsh: "0.2.1-rc.2"`, and peers `@deepseek-ai/dsh-llm: "0.2.1-rc.2"`, `@deepseek-ai/dsh-tools: "0.2.1-rc.2"` and `@deepseek-ai/schemastery: "~3.18.5"`. Its `dsh.bundle.patch` is `"./cordis.patch.yml"`; the connector itself inserts only this row:
-
-连接器自身的版本和 peer 声明如上，patch 只增加以下入口；它与后文生成的多插件适配包是不同的包：
-
-```yaml
-- insert:
-    - id: legion
-      name: dsh-plugin-legion
-```
-
-- `write` writes generated workspace files; `plugin_manager` installs and manages them. Neither is replaced by a private installer. / 文件写入和安装分别走原生工具，不另造安装器。
-- `plugin_market` is optional and must be visible to the current Agent for market discovery. / 市场工具可选，必须对当前 Agent 可见。
-- The `legion-ecosystem` skill registers only when the Host provides `skills`; slash commands register only with `commands`. / 技能与命令按 Host 提供的服务注册。
-- The native-call path supplies the Agent, parent execution token, `rootCallId` and cancellation signal to `ctx.tools.execute`; these objects are not sent to Legion. `deferContext` and `concludeTurn` remain bound to the original runtime-owned execution. Successful image content is forwarded as a local user context, alongside native additional contexts and turn completion. / 这是当前转交实现；本地图片、待提交结构化输出和结束回合仍需真实 Host 重放，不能用隔离回归冒充。
-
-## 2. Model tools and human commands / 模型工具与人类命令
-
-There are **11 model tools**. All names below are literal. DSH invocation identity is supplied by the Host, not by model parameters.
-
-当前共有 **11 个模型工具**。会话身份来自 Host，不能由模型参数伪造。
-
-| Tool / 工具 | Required / 必填 | Optional / 可选 |
+| 工具 | 必填 | 可选 |
 |---|---|---|
-| `legion_discover` | None / 无 | `query`, `source`, `limit`, `offset`, `index_url` |
-| `legion_source` | `action`, `repository`; `read` also needs `commit`, `path` / read 还需后两项 | `ref` for inspect; `offset`, `limit` for read |
-| `legion_bundle` | `directory`, `spec`, `source_refs` | Optional fields inside `spec` and source references / 对象内可选项见下文 |
-| `legion_call` | `task_ref`, `recipient`, `operation_key`, `tool_name`, `arguments` | None / 无 |
+| `legion_discover` | 无 | `query`, `source`, `limit`, `offset`, `index_url` |
+| `legion_source` | `action`, `repository`；`read` 还需 `commit`, `path` | inspect 的 `ref`；read 的 `offset`, `limit` |
+| `legion_bundle` | `directory`, `spec`, `source_refs` | 对象内可选项见第 5 节 |
+| `legion_call` | `task_ref`, `recipient`, `operation_key`, `tool_name`, `arguments` | 无 |
 | `legion_submit` | `key`, `query` | `context`, `previous_task_ref`, `tool_names` |
-| `legion_list` | None / 无 | None / 无 |
+| `legion_list` | 无 | 无 |
 | `legion_status` | `task_ref` | `after_event_id`, `after_message_id` |
-| `legion_message` | `task_ref`, `operation_key`, `recipient`, `text` | None / 无 |
-| `legion_resume` | `task_ref`, `operation_key` | None / 无 |
+| `legion_message` | `task_ref`, `operation_key`, `recipient`, `text` | 无 |
+| `legion_resume` | `task_ref`, `operation_key` | 无 |
 | `legion_cancel` | `task_ref` | `reason` |
-| `legion_download` | `task_ref`, `artifact_id` | None / 无 |
+| `legion_download` | `task_ref`, `artifact_id` | 无 |
 
-The four new tools have **no matching new slash subcommands**. Use ordinary chat or their tool schemas. Existing commands are:
-
-新增四工具**没有对应的新斜杠子命令**，应通过普通对话或模型工具使用。原命令保留：
-
-| Command / 命令 | Meaning / 含义 |
-|---|---|
-| `/legion help` | Show command usage / 查看命令用法 |
-| `/legion start <key> <task>` | `legion_submit`, new task / 新建任务 |
-| `/legion list` | Local references, not live status / 本地引用，不是实时进度 |
-| `/legion status <ref> [cursor]` | Live state and event page / 实时状态与一页事件 |
-| `/legion continue <ref> <new-key> <feedback>` | `legion_submit` with `previous_task_ref`, explicit new work / 明确续作 |
-| `/legion message <ref> <opkey> <taskid> <text>` | Task mailbox only / 仅投递任务邮箱 |
-| `/legion resume <ref> <opkey>` | Request recovery of interrupted work / 请求恢复中断 |
-| `/legion cancel <ref> [reason]` | Request cancellation / 请求取消 |
-| `/legion download <ref> <artifact-id>` | Download an eligible formal export / 下载符合条件的正式导出 |
-
-References must be explicit; `latest` and command attachments are not supported. Command/RPC success, native tool execution and remote task completion are different observations. / 必须明确引用，不支持 `latest` 或命令附件；命令成功、工具执行、远端完成不是同一件事。
-
-## 3. Discover existing capabilities / 搜索现成能力
-
-Example tool arguments / 工具参数示例：
-
-```json
-{
-  "source": "installed",
-  "query": "read",
-  "limit": 10,
-  "offset": 0
-}
-```
-
-`source` is `all | installed | market | github` (default `all`); `query` is at most 500 characters. `limit` is 1–30 (default 10), and `offset` is a non-negative integer (default 0). Results include `fetched_at` and `untrusted_source: true`; discovery never installs or executes a result.
-
-`source` 默认 `all`；搜索词至多 500 字符，分页默认 10 条、偏移 0。结果带时间与不可信来源标记，不自动安装或执行。
-
-| Source / 来源 | Contract / 返回边界 |
-|---|---|
-| `installed` | Current Agent-visible schemas only: `scope: "current_dsh_agent"`, `entries`, `total`, `next_offset`, `grants_remote_access: false`. Not all machine-installed plugins. / 只列当前 Agent 可见工具，不是全机器安装清单。 |
-| `market` | Calls native `plugin_market` with `list_indexes`, then `list_plugins` for user-configured indexes. `index_url`, if supplied, must match a configured index. / 只查用户已配置索引，不能临时塞入未知索引。 |
-| `github` | Public repository search, at most 10 results and only the first page; `offset_supported: false`. Without a query, `state: "query_required"`. / 最多十条、仅第一页，不伪装支持 offset。 |
-
-Market states distinguish `unavailable`, `not_configured`, `failed`, `partial` and `available`. Up to five indexes are queried per call; `remaining_indexes` identifies the rest. One source's failure does not erase another source's successful results. Cancelling a market wait does not claim to cancel the official market's shared fetch lifetime.
-
-市场不可见、未配置、失败、部分成功和成功分别返回；每次最多处理五个索引，剩余地址在 `remaining_indexes`。不能把失败或尚未读取写成“没有能力”。取消本次等待也不冒充已停止官方市场的共享抓取。
-
-A GitHub discovery failure remains `github.state: "failed"` with an `error` message; the current implementation also includes `github.diagnostics` for typed source errors. These fields address the observed diagnostic gap, but native re-verification is still pending. Failure is not an empty search result. / 当前代码已补来源诊断字段，字段存在不等于原生复验通过；失败仍不能写成“没有结果”。
-
-## 4. Read actual public source / 读取真实公开源码
-
-| Action / 动作 | Arguments / 参数 | Result / 结果 |
-|---|---|---|
-| `inspect` | `repository`, optional `ref` / 可选分支、标签或 commit | Resolves the chosen/default branch to a fixed `commit`; returns metadata, tree, README, manifest and license observations. / 固定到 commit 后读取目录与预览。 |
-| `read` | `repository`, full 40-hex `commit`, relative `path`, optional `offset`, `limit` | Reads a regular non-empty UTF-8 text file at that commit, with continuation fields. / 按固定提交分页读实际文本。 |
-
-`repository` accepts a public `owner/repo` or its canonical `https://github.com/owner/repo` URL, not an arbitrary fetch URL. `read` uses **UTF-8 byte offsets**, not lines or character positions: default `offset: 0`, `limit: 12000`, allowed `limit: 1–65536`. Use the returned `next_offset` rather than calculating a new character offset.
-
-仓库输入只接受公开 GitHub 仓库，不是任意 URL 读取器。`read` 的分页单位是 **UTF-8 字节**，不是行数或字符数；后续读取使用返回的偏移。
-
-- `inspect` exposes at most 2,000 tree entries, one README, eight manifest previews and one actual license-file preview, each preview at most 12,000 bytes. / 目录与预览有上限，不等于完整仓库副本。
-- A text file is at most 1 MiB, or a lower configured response limit. Read requests still check the pinned commit/tree/blob identity and whole file bytes. / 单文件上限不因分页被绕过。
-- `read` returns `trust`, `status`, `repository`, `commit`, `source_sha`, `path`, `url`, `fetched_at`, `source`, `content`, `encoding`, `sha256`, `blob_sha`, `offset`, `limit`, `end_offset`, `returned_bytes`, `total_bytes`, `offset_unit`, `truncated`, `next_offset` and `next`. Its **SHA-256 covers the whole file**, not only the returned page. / hash 对应整文件，不是当前页。
-- Keep `partial`, `errors`, truncation and continuation facts. A limited index or `not_detected` license observation is not evidence of absence. / 截断、未检出、读取失败都不能推成不存在。
-- Requests use the fixed GitHub API; redirects, private repositories, symlinks, submodules and binary content are not followed as source files. Nothing is installed or executed. / 不跟随这些目标，也不执行读取的内容。
-
-License metadata and actual text remain source observations with `assessment: "not_performed"`. `NOASSERTION` is not a conclusion that reuse is allowed or forbidden; neither it, missing text nor a repository description grants redistribution rights. Inspect all applicable licenses before adapting or distributing; fetch further pages when the license preview is incomplete.
-
-许可证字段和原文只是来源事实，`assessment` 保持未评估；`NOASSERTION` 既不代表已获授权，也不代表不可复用。预览不完整就继续读取，不能擅自补成 MIT 或其他许可。
-
-### Source error facts / 来源错误事实
-
-For typed GitHub source errors, the current implementation keeps locally defined `name`, `message`, `code`, `trust`, and optional `status`, `rate_limit`, `retry_after_seconds` and `retryable`. `rate_limit` contains `limit`, `remaining`, `used`, `reset_epoch_seconds` and `resource`; invalid or unavailable numeric/header values are `null`. It does not forward arbitrary response bodies, redirect locations or the original exception.
-
-来源诊断只保留白名单事实，不透传响应正文或原始异常。限流值未知时保留 `null`，不捏造剩余额度或重试时间。
-
-`legion_source` still reports a failure: except for aborts, typed source errors append `Source diagnostics: <JSON facts>` to the native error message, rather than becoming a successful tool result. Do not assume the Host exposes these facts as separate structured fields. Discovery can expose the same facts as `github.diagnostics`. These code paths still need native replay to confirm that the author receives the diagnostics.
-
-来源读取失败不会为了带诊断而改报成功；诊断 JSON 位于错误文本中，中断继续抛出。是否真的到达原生作者仍待复验，不能仅凭代码已补字段宣称解决。
-
-## 5. Package authored adapters / 包装作者已完成的适配代码
-
-`legion_bundle` requires an absolute ordinary workspace `directory`, a `spec`, and 1–4 `source_refs`. Each reference is `{ repository, ref?, paths? }`, with at most four extra source paths. Prefer the full commit already reviewed. The tool validates the current spec, obtains actual source observations or reuses eligible pinned observations, then uses native `write`; it does not accept invented caller-supplied hashes or license observations.
-
-输出目录必须是普通工作区的绝对目录，不能是 DSH 配置目录。`source_refs` 优先使用已审的完整 commit；来源事实来自真实读取或下述有限复用，不接受编造的来源 hash 或许可事实。
-
-### Pinned source observations on retry / 重试时的固定来源观察
-
-- Reuse is scoped to the **same native DSH session and connector instance/lifetime**. Its key includes the supplied repository identifiers, full 40-hex commits and ordered path lists. Branches, tags, short SHAs and omitted refs are fetched again. / 不跨会话、实例或插件生命周期借用来源；不把漂移 ref 当固定来源。
-- Only successful `inspected` observations without errors are retained. `partial`, top-level errors and nested `license.error` are not cached; the next call reads them again. A **successful but truncated preview** may be retained, with its truncation and original whole-file hash unchanged. / 截断不是完整阅读证明；错误不能冻结成永远“已查过”。
-- Reuse preserves the original `fetched_at`, commit, file hashes and license observations. `source_retrieval: "reused_pinned_facts"` in the tool result and `retrieval: "reused_pinned_facts"` on each provenance item explicitly distinguish it from `"fetched"`. It does not imply a fresh network request, current repository access or a license/quality assessment. / 复用必须显示原时间和来源，不制造新鲜证据。
-- The in-memory store is capped at **16 groups / 1 MiB** and cleared on connector disposal or lifecycle abort. An individual cancelled call does not erase earlier successful observations. It stores provenance facts, including bounded license observations, **not authored adapter code, output directories, native execution results or permissions**. / 只保存有限来源事实，不把业务结果或授权做成缓存。
-- Every retry validates the **current** spec and destination and performs each native write under current permissions, including read-before-write requirements. A failed write may leave files and retained successful source observations; neither is a successful installation or a rollback. / 省去重复查同一版本，不省掉当前写入和权限检查。
-
-This behavior belongs to the model tool, not the pure `buildBundle` helper or a global cache for `legion_source`. Its isolated regression/review evidence does not establish that a previously loaded Host is running the on-disk change.
-
-这是模型工具的来源重试行为，不是给纯函数或所有读源调用加全局缓存。当前隔离回归和独立复核不能代替旧 Host 的实际加载核验。
-
-**Shape example only; not runnable adapter code.** Replace every angle-bracket placeholder with real reviewed input. The adapter's example version below is separate from the connector's 0.2.0 version.
-
-**下例只展示参数结构，不是可运行适配代码。** 所有占位符都需替换；示例适配包版本与连接器版本分开。
-
-```json
-{
-  "directory": "<absolute workspace output directory>",
-  "spec": {
-    "package_name": "dsh-plugin-my-capabilities",
-    "version": "0.1.0",
-    "description": "Independently usable adapted capabilities",
-    "plugins": [
-      { "id": "analyze", "title": "Analyze", "description": "The adapted analysis capability", "entry": "analyze.js" },
-      { "id": "render", "title": "Render", "description": "The adapted rendering capability", "entry": "render.mjs" }
-    ],
-    "files": [
-      { "path": "analyze.js", "content": "<reviewed ESM analysis adapter source>" },
-      { "path": "render.mjs", "content": "<reviewed ESM rendering adapter source>" }
-    ],
-    "dependencies": [
-      { "name": "@deepseek-ai/dsh-tools", "version": "0.2.1-rc.2" }
-    ]
-  },
-  "source_refs": [
-    { "repository": "<owner>/<repo>", "ref": "<full 40-hex commit>", "paths": ["src/index.js"] }
-  ]
-}
-```
-
-### Input and license rules / 输入与许可边界
-
-- Required spec fields: `package_name`, exact `version`, `description`, non-empty `plugins` and `files`. Each plugin has `id`, `title`, `description`, `entry`; each file has `path`, `content`. An entry must already be a listed non-empty relative `.js` or `.mjs` file. / 入口必须真实包含在输入文件里。
-- Optional `dependencies` is an array of `{ name, version }` with exact npm semver only, not ranges, URLs, Git specs or aliases. No scripts can be supplied through spec fields. / 只接受固定完整版本，不接收任意 package 字段或安装脚本。
-- Optional `license` is only the caller's declaration for code they have authority to license; it is not a verified upstream grant. Put a specific, authorized license text into a file whose path is `LICENSE` to preserve it verbatim. Without that text, no LICENSE is generated; without the field, the package makes no license declaration. / 声明与原文各自按输入保留，不推断权利。
-- Rejects traversal, absolute/backslash/NUL paths, duplicate or case/Unicode-alias paths, file/directory conflicts, missing entries, empty content, reserved metadata/control-file replacement and unknown spec fields. / 这些是格式和安全边界，不是恶意代码检测或质量评分。
-- At most **256 input files, 64 plugins and 128 direct dependencies**; each output file at most **1 MiB**, total output including generated metadata at most **8 MiB**, provenance JSON at most **256 KiB**, path at most **512 UTF-8 bytes**. / 大小限制按 UTF-8 字节计算。
-
-### Generated metadata and return values / 元数据与返回值
-
-The package is ESM with `private: true`. Root export `.` points to the first entry; **every** plugin also gets `./<id>`. The patch inserts a row with both `id` and `name` equal to `<package>/<id>`. Root/subpath locale and icon exports are included; each plugin has its own title/description metadata and may share the original SVG. Both locale files preserve the supplied wording; they do not claim automatic translation.
-
-生成的是本地适配工程包，不是自动 npm 发布。每项都有独立原生行和子路径元数据；一包装入，逐项启停，不是把每项变成独立 npm 包。locale 保留调用方文字，不冒充翻译完成。
-
-Generated files include `package.json`, `cordis.patch.yml`, locale files, `icon.svg`, `README.md`, `provenance.json` and `SOURCE-NOTICE.md`, alongside the supplied files. The generated package has **no `prepare`, `postinstall` or other scripts**. It writes the declared exact versions to `dependencies`, but **does not scan imports or generate `peerDependencies` or `engines`**. The author must identify runtime dependencies; direct version pinning is not Host peer-compatibility verification. Dependencies may themselves have install scripts, handled through native approval.
-
-包装只记录明确依赖，不自动补运行环境、MCP 或 skill 接线；这些要由真实适配代码完成。依赖自身仍可能有脚本，不能把“生成包无脚本”扩大成“整个依赖树无脚本”。
-
-The internal synchronous helper **`buildBundle(spec, provenance = [])` is pure**: it reads/writes no files, performs no network requests, installs nothing and never evaluates input JavaScript. Its result is:
-
-内部纯函数与有来源读取／原生写入行为的 `legion_bundle` 工具分开。纯函数返回：
+新增 discover／source／bundle／call 没有对应的新斜杠子命令；通过普通对话或模型工具使用。既有命令如下：
 
 ```text
-{
-  files: [{ path, content, sha256 }],
-  packageName, version,
-  plugins: [{ id, rowId, name, title, description, entry }],
-  totalBytes,
-  verification: { installed: "unverified", active: "unverified", called: "unverified" }
-}
+/legion help
+/legion start <key> <task>
+/legion list
+/legion status <ref> [cursor]
+/legion continue <ref> <new-key> <feedback>
+/legion message <ref> <opkey> <taskid> <text>
+/legion resume <ref> <opkey>
+/legion cancel <ref> [reason]
+/legion download <ref> <artifact-id>
 ```
 
-The helper preserves caller-provided provenance as data; only the model tool obtains actual source observations or reuses eligible pinned facts before calling it. Each tool-supplied provenance item has `retrieval: "fetched" | "reused_pinned_facts"`. Successful **tool** output has:
+`status` 命令的 cursor 是事件游标；消息游标用模型工具参数。引用必须明确，不支持 `latest` 或命令附件。命令成功、工具执行和远端任务完成不是同一观察。
 
-纯函数只保留传入事实；模型工具先获取或按上述范围复用来源，每项记录带 `retrieval`。工具成功结果如下，其中文件路径为绝对路径：
+## 3. Capability discovery
+
+`source: all | installed | market | github`，默认 `all`；`query` 至多 500 字符。`limit` 为 1–30，默认 10；`offset` 为非负整数，默认 0。返回 `fetched_at`、`untrusted_source: true`，不安装或执行结果。
+
+| 来源 | 返回边界 |
+|---|---|
+| `installed` | 当前 Agent 可见 schema；`scope: "current_dsh_agent"`、`entries`、`total`、`next_offset`、`grants_remote_access: false`。不是全机器安装清单。 |
+| `market` | 原生 `plugin_market` 的 `list_indexes` → `list_plugins`；`index_url` 只能选择已配置索引。一次至多 5 个，余项见 `remaining_indexes`。 |
+| `github` | 公开仓库搜索，至多 10 条、仅第一页，`offset_supported: false`；没有搜索词时为 `query_required`。 |
+
+市场区分 `unavailable`、`not_configured`、`failed`、`partial`、`available`。GitHub 失败为 `github.state: "failed"`，带 `error`；类型化来源错误另有 `diagnostics`。一个来源失败不抹掉其他来源结果；失败不是空结果，取消等待也不证明官方市场的共享抓取已停止。
+
+## 4. Public source reading
+
+`repository` 只接受公开 `owner/repo` 或规范 `https://github.com/owner/repo`，不是任意 URL 抓取器。
+
+| 动作 | 行为 |
+|---|---|
+| `inspect` | 可选 `ref`；省略用默认分支，将其解析到固定 `commit`，返回元数据、目录、README、清单和许可证观察。 |
+| `read` | 必须用完整 40 位 `commit` 与仓库相对 `path`；读取非空普通 UTF-8 文本。默认 `offset: 0`、`limit: 12000`，limit 为 1–65536 **字节**。 |
+
+- `inspect` 至多 2,000 个目录项、1 个 README、8 个清单及实际许可证文件预览，各至多 12,000 字节。单个文本文件上限 1 MiB，或更小的配置响应上限；分页不绕过整文件限制。
+- `read` 核对固定 commit／tree／blob 和整文件字节，返回 `trust`, `status`, `repository`, `commit`, `source_sha`, `path`, `url`, `fetched_at`, `source`, `content`, `encoding`, `sha256`, `blob_sha`, `offset`, `limit`, `end_offset`, `returned_bytes`, `total_bytes`, `offset_unit`, `truncated`, `next_offset`, `next`。**SHA-256 对应整文件，不是当前页**；续页用返回的 `next_offset`，不要用字符位置计算。
+- 保留 `partial`、`errors`、截断与续页信息。目录有限或许可证 `not_detected` 不等于不存在；`assessment: "not_performed"` 和 `NOASSERTION` 都不是分发权判断。
+- 请求使用固定 GitHub API，不跟随重定向，不把私有仓库、符号链接、子模块或二进制当作可读源文件；不执行读到的代码。
+
+### Large output and failures
+
+大 `inspect` JSON 仍交给 Host 的原生输出／转存机制；显示片段可能不是完整 JSON。依据本次工具结果中的转存位置读取完整输出，或对所需源码使用 `read` 续页。连接器没有用 compact `additionalContexts` 重建全文，也不把 repo 正文升级为 instruction。
+
+类型化来源错误只保留本地定义的 `name`, `message`, `code`, `trust`，以及可用的 `status`, `rate_limit`, `retry_after_seconds`, `retryable`。`rate_limit` 含 `limit`, `remaining`, `used`, `reset_epoch_seconds`, `resource`；未知／不合法值保留 `null`，不编造重试时刻。
+
+`legion_source` 和 `legion_bundle` 的来源获取异常仍走**失败通道**：非取消错误通过原生 `HarnessError` 文本附 `Source diagnostics: <JSON>`；不假定 Host 提供独立结构化字段。取消及非来源异常保留原身份；不透传响应正文、重定向地址或任意原始异常。`discover` 可用相同事实表达单个来源失败，不自动绕过限流。
+
+## 5. Package authored adapters
+
+`legion_bundle` 必须提供普通工作区的绝对 `directory`（**不加 `file:`**）、`spec`、1–4 个 `source_refs`。每个来源为 `{ repository, ref?, paths? }`，最多 4 个额外文件路径。来源事实来自实际读取或合格的固定观察复用，不能由调用方编造 hash／许可。结构示例见[生态用法](ECOSYSTEM.md#作者适配与包装)。
+
+| `spec` 字段 | 契约 |
+|---|---|
+| `package_name`, `version`, `description` | 必填；版本为完整固定 semver。 |
+| `plugins` | 非空数组，每项 `{ id, title, description, entry }`；entry 必须是 files 中实际提供的非空相对 `.js`／`.mjs` 文件。 |
+| `files` | 非空数组，每项 `{ path, content }`；内容是作者实际编写的 ESM 适配及所需文本。 |
+| `dependencies` | 可选 `{ name, version }[]`，版本只接受完整 semver，不接受范围、URL、Git spec 或别名。 |
+| `license` | 可选、仅为有权声明的代码给出的声明；`files` 中的 `LICENSE` 原文保留，没有原文不生成，没有字段不添加许可声明。 |
+
+拒绝越界／绝对／反斜线／NUL 路径、大小写或 Unicode 别名重复、文件目录冲突、缺入口、空内容、保留元数据／控制文件替换与未知 spec 字段。这些是协议保护，不是代码审查。最多 **256 文件、64 插件、128 直接依赖**；单个输出文件 1 MiB，含元数据总输出 8 MiB，provenance 256 KiB，路径 512 UTF-8 字节。
+
+### Pinned facts on retry
+
+复用限**同原生会话、同连接器实例／生命周期**，key 包含仓库输入、完整 40 位 commit 和有序路径列表。分支、标签、短 SHA 或缺省 ref 重新读取；`partial`、任何错误及 `license.error` 不复用。成功但截断的观察可复用，仍明确截断。
+
+内存至多 **16 组／1 MiB**，卸载或生命周期 abort 清除；单次调用取消不抹掉之前成功观察。只保留来源事实，不保留适配代码、目录、原生执行结果或权限。保留原 `fetched_at`／hash，工具 `source_retrieval` 及各 provenance 项 `retrieval` 标记 `fetched` 或 `reused_pinned_facts`；不冒充新抓取或许可评估。每次仍核当前 spec／目录并逐文件走当前原生写权限。它不是 `legion_source` 的全局缓存。
+
+### Outputs and installation
+
+生成 ESM、`private: true` 的包；根 export 指向首入口，每项另有 `./<id>`，patch 各行的 `id`／`name` 为 `<package>/<id>`。生成清单、patch、locale、原创图标、README、`provenance.json`、`SOURCE-NOTICE.md`；locale 保留输入文字，不声称自动翻译。
+
+没有 `prepare`／`postinstall` 等 scripts；不会扫描 imports、生成 `peerDependencies`／`engines`、补 inject 或安装外部环境。依赖自身仍可能有脚本。一个 bundle 是一个安装单位，不是每个能力一个 npm 包。
+
+内部同步 `buildBundle(spec, provenance = [])` 是纯函数，不读写文件、不联网、不执行输入代码；它保留传入 provenance，返回 `files: [{ path, content, sha256 }]`、`packageName`、`version`、`plugins`、`totalBytes` 和未验证的 `verification`。有来源读取和原生写入的是模型工具，不是此纯函数。
+
+模型工具成功返回：
 
 ```text
 {
@@ -219,171 +118,107 @@ The helper preserves caller-provided provenance as data; only the model tool obt
   source_retrieval: "fetched" | "reused_pinned_facts",
   install: {
     tool: "plugin_manager",
-    arguments: { action: "install_bundle", target: directory, enabled: false }
+    arguments: { action: "install_bundle", target: "file:" + directory, enabled: false }
   },
   execution_verified: false
 }
 ```
 
-Use a dedicated output directory: native `write` can overwrite existing same-path files. A native write failure reports the already-written subset and does not roll it back. Expected hashes are not independent readback. After reviewing the files, DSH can call official `plugin_manager` with the returned parameters, retain `application`, warnings, pending build approvals and restart requirements, then manage the bundle via `set_bundle` and individual current rows via `list_plugins` / `set_plugin`. Never invent `approvedBuilds` or edit profile package files as a shortcut.
+原生 `write` 可覆盖同名文件；失败报告已写部分，不自动回滚。hash 是预期值，仍需独立读回。用返回的安装参数走官方管理器，保留 `application`／`changed`／警告／重启要求。`set_bundle` 管整包，`list_plugins` 读真实 `entryId` 后用 `set_plugin` 管单项；`rowId` 不能代替运行 ID，加载失败也不证明选择已回滚。细节见[原生安装](ECOSYSTEM.md#native-installation)。
 
-不要把部分写入当成回滚成功，把预期 hash 当成读回，或把安装回执当成真实调用。安装仍以整个 bundle 为单位；各项独立开关交给原生管理器，不另造运行器。
+开发入口是 Host `skill` 的 `{ "name": "cordis-plugin-development" }` 及其返回基目录下的 `references/host-plugin.md`、`references/practices.md`。`export const inject = ['tools']` 声明服务依赖，**不授予调用权限**。import、激活、调用、卸载各需自己的事实。
 
-### Native development references / 原生开发参考
+## 6. Two-step collaboration
 
-Use the Host's `skill` tool with `{ "name": "cordis-plugin-development" }`, then read `references/host-plugin.md` and `references/practices.md` relative to the base directory returned by that skill. Accessing `ctx.tools` needs a native service dependency/injection—for example, the official module form `export const inject = ['tools']`. Service injection does not grant tool-execution approval. Module import, fiber activation, actual tool calls and cleanup on unload are separate observations.
+`legion_submit.tool_names` 只分享最多 **30 个明确选定、当前 Agent 可见**的 schema；省略／`[]` 不分享，不给远端 token 或本机执行权。
 
-当前生态 skill 与之后生成包的 README 已提供这些精确指针。使用 skill 返回的基目录，不猜安装路径；`cordis_inspect_query` 可只读检查已挂载行，安装和开关仍走 `plugin_manager` 及其权限。这些是开发信息，不会扫描代码猜依赖、自动补注入、执行作者代码或追溯改好已存在的包，也不能证明原作者已经读到。
+### Execute first
 
-## 6. Return one native result to a task / 把一次原生结果交回任务
+`legion_call` 需要原会话 `task_ref`、可用个人令牌、明确收件任务 ID、稳定 `operation_key`、非 `legion_*` 的工具名和 JSON 对象参数。新操作检查当前可见性，经原生运行时执行；先预约，防止同一操作重复发起。桥接器不发 HTTP／消息，所选工具本身仍可能联网。
 
-`legion_submit.tool_names` optionally shares at most **30 explicitly selected current Agent-visible tool schemas**. Omission or `[]` shares none. Descriptions and parameter formats are not execution tokens or permission grants.
+首次成功子调用只返回 pending 观察及其**经过原生策略的最终 `content` 投影**，不用隐藏的 `value`／`error`／`additionalContexts` 补正文。父层仍可能改写或拒绝。首次子调用失败、未知或取消仍报工具错误；元数据写入失败另外标明，不转换成成功或自动投递。
 
-`tool_names` 只发选定能力的说明和格式，不把本机工具开放给远端直接调用。
+### Observe the enclosing call, then decide to send
 
-### Step 1: explicit native execution, no HTTP / 第一步：只调用本机工具
+官方 `tools/result` 从当前 token 同步跟随 parent 到根；根终态后只写一次元数据，不保存子／父正文、不回改首回执、不发网络。终态按官方结果而非事后单看 signal 是否 aborted；缺根证据不能确认成功。观察器写盘失败不能改 Host 结果，恢复可能仍 pending／unknown。
 
-`legion_call` needs an existing `task_ref` from the same DSH session, a personal Legion token, an explicit recipient task ID, a stable `operation_key`, a non-`legion_*` tool name and a JSON object of arguments. A **new** operation requires that tool to be visible to the current Agent. DSH decides whether to invoke it under native permissions. The bridge never sends HTTP or task messages; the selected tool may have its own network behavior.
-
-使用原任务状态中的实际收件任务 ID；先预约再执行，沿用 Agent、父子调用关系、原始 execution 方法和取消信号，没有后台远程执行器。
-
-The first tool body is a **pending child observation**, not committed outer-call success. A successful, non-aborted child returns `native.state: "unknown"`, `native.observed.state: "succeeded"`, `transport.state: "pending"`, plus a bounded projection of its **final policy-processed `content`**. Hidden `value`, `error` and `additionalContexts` are not alternative sources for that text. A failed/unknown child or cancellation still raises a tool error, with a receipt where available. Initial metadata-save failure is reported separately, not turned into an automatic delivery attempt.
-
-首次正常返回只表示子调用的观察结果；外层策略还可能拒绝、取消或改写内容，不能据此提前发送成功消息。首次失败／未知／取消不会被 pending 包装成成功。
-
-### Root settlement stores metadata only / 等根调用结束，只记元数据
-
-The official `tools/result` observer follows this `legion_call` token through every parent to the root, saving one terminal observation **only after the root result arrives**. It retains call IDs, names and states, never child/parent result bodies. It sends no HTTP and does not mutate the already-returned pending receipt. Without complete root evidence, success remains unconfirmed. Observer write failure cannot change the Host result and can leave recovery pending/unknown.
-
-`transport` 是 **DSH 外层调用链状态，不是网络投递状态**。子调用和所有祖先都成功才记 `native.state: "succeeded"`。祖先失败／取消时，子调用即使成功也只能保持 `unknown`；子调用明确失败则保留 `failed`。
-
-| Receipt field / 回执字段 | Meaning / 含义 |
+| 回执字段 | 含义 |
 |---|---|
-| `version`, `task_ref`, `operation_id`, `recipient`, `tool_name` | `version: 2` and operation identity / v2 回执及本次操作身份 |
-| `native.state` | Initially `unknown`; later `succeeded` only with successful child and ancestor evidence, or `failed` for an observed child failure / 不把子调用成功当外层成功 |
-| `native.observed.state` | Child observation: `succeeded`, `failed` or `unknown` / 子调用本身的观察 |
-| `native.result`, `projection` | First invocation only: bounded content projection and omission/truncation facts; **not persisted or replayed** by the v2 ledger / 不入 v2 账本，不随恢复返回 |
-| `transport.state` | `pending`, `succeeded`, `failed` or `unknown`; native enclosing-call state, not HTTP / 外层调用链状态 |
-| `transport.outcomes` | When recorded: ordered `{ call_id, name, state }` for this call through the root; no bodies / 逐层终态元数据 |
-| `delivery` for new v2 operations | `{ acknowledgement: "not_attempted", automatic: false, method: "legion_message" }`; no automatic message key / 新操作从未自动投递，不代表旧 v1 历史从未发送 |
-| `delivery` when recovering v1 | Historical ACK metadata with `historical: true`, `attempted_now: false`; not the new-v2 `not_attempted` default / 只读保留历史投递事实，不在本次发送 |
-| `persistence`, `persistence_error` | Initial metadata-save failure: `"failed"` and a sanitized reason; not an execution or delivery verdict / 初次元数据落盘失败的独立事实 |
-| `consumed_by_model_confirmed` | Always `false` / 不把执行或入邮箱当消费 |
-| `reused` | `false` on the first receipt; `true` when reading existing metadata / 是否读既有操作状态 |
-| `legacy_version`, `recovery_note` | Legacy v1 recovery without authoritative ancestor evidence / 旧版缺证据的说明 |
+| `version`, `task_ref`, `operation_id`, `recipient`, `tool_name` | v2 与操作身份；不是新的访问凭据。 |
+| `native.state` | 初始 `unknown`；子调用及全部祖先成功才可确认 `succeeded`；明确子失败保留 `failed`。 |
+| `native.observed.state` | 子调用观察：`succeeded`／`failed`／`unknown`；不等于祖先提交。 |
+| `native.result`, `projection` | 只在首次返回的有限正文投影及省略／截断事实；不存入 v2 记录、不随恢复回放。 |
+| `transport.state`, `transport.outcomes` | `pending`／`succeeded`／`failed`／`unknown`；逐层 `{ call_id, name, state }`。这里是 **DSH 父调用链，不是 HTTP 投递**。 |
+| 新 v2 的 `delivery` | `{ acknowledgement: "not_attempted", automatic: false, method: "legion_message" }`；后续独立消息不会更新此字段。 |
+| `persistence`, `persistence_error` | 初次元数据保存失败时单列 `failed` 和脱敏原因，不代表工具未执行。 |
+| `consumed_by_model_confirmed` | 保持 `false`，不把任何回执当模型消费。 |
 
-### Step 2: decide after the Host's final result / 第二步：看到最终结果后另行发送
+**等 Host 展示外层调用的最终结果后**，DSH 下一次独立决定是否调用 `legion_message`。用消息自己的稳定 key，只发送实际可见且允许分享的内容；失败、未知亦如实说明。不要在同一个仍运行的 `run_code` 或其他父调用内执行并发送成功消息。这是使用协议，不是拦截任意程序的控制器。
 
-Only after the **enclosing call's final result is visible** should DSH make a separate decision to call `legion_message` for the original `task_ref` and recipient. Send only the shareable content the Host actually showed, with honest failure/uncertainty. **Do not combine execution and success feedback inside the same `run_code` or another still-running parent.** This is the skill/use protocol, not a runtime interceptor for arbitrary programs.
+### Recovery and media
 
-下面是两次独立调用的参数模板，不是可连写在同一 `run_code` 的脚本。占位符换成原任务／收件人／可见工具，`arguments` 按真实工具 schema 填写；第二次必须等 Host 最终结果可见后再决定。
+同任务、同 key、同 recipient／tool／arguments 只读元数据；改输入会拒绝。已预约记录先于目标可见性检查，因此目标能力停用／卸载后仍可恢复，前提是连接器、原会话／状态及授权可用。只有预约或终态不完整就保持未知，不重做副作用；本地去重不等于跨机器 exactly-once。取消／卸载后不继续发请求，恢复异步读取后仍检查生命周期。
 
-First, `legion_call` / 先执行：
+v1 没有祖先证据，旧成功不能确认原生成功，旧正文不回放；明确旧失败可保留。历史 `native-result:<operation_id>` ACK 只读为 `received`／`rejected`／`unconfirmed`，并列 `historical: true`、`attempted_now: false`。旧原生 `failed` 与历史 `received` 可以同时成立。缺失／不可读／畸形 ACK 保持 `unconfirmed`，不抹成“未发送”，不重发、不改盘。
 
-```json
-{
-  "task_ref": "<task_ref>",
-  "recipient": "<recipient_task_id>",
-  "operation_key": "local-result-1",
-  "tool_name": "<visible_non_legion_tool>",
-  "arguments": {}
-}
-```
+正文投影预算 **12,288 字节**，另有限长／深度／形状限制；明确媒体、data URL、敏感及标记编码字段省略。普通长文本或 hash 不按外形猜成 base64，仍按预算截断。`media_return` 明示仅文本／元数据；本地图片转交不是远端完整媒体或视觉验证。脱敏不是万能秘密检测。
 
-**Wait for the enclosing call to finish and inspect its actual final result.** If sharing is appropriate, a later `legion_message` / **等待外层最终结果，再按实际情况单独发送**：
+## 7. Configuration
 
-```json
-{
-  "task_ref": "<task_ref>",
-  "recipient": "<recipient_task_id>",
-  "operation_key": "share-local-result-1",
-  "text": "<shareable text from the Host's actual final result>"
-}
-```
+这些是用户／运营者配置，不是模型参数；未知配置字段（含内联 token）会拒绝。JSON Environment 编辑器用带引号的 JSON 字符串值，普通环境变量用普通字符串。
 
-The explicit message uses its **own stable operation key** and separate acknowledgement. It does not update the new v2 `legion_call.delivery`, which stays `not_attempted`. A received acknowledgement is not remote-model consumption. Delivery does not wake/resume terminal tasks; explicit new work still uses `legion_submit` with `previous_task_ref` and a new task key.
-
-执行与消息分开后，消息失败不能被说成本机没执行；也不能拿发送错误去补发旧缓存正文。实际消费仍要看原任务后续运行事实。显式消息 ACK 中字符串、字段名和诊断路径的 data URL 清理已修复并通过回归，包括右括号／单引号边界；这不等于所有媒体编码或 ACK 路径均已验证安全。
-
-### Same-key recovery: no execution or body replay / 同键恢复：不重做、不回正文
-
-The same task/key and matching recipient, tool and arguments recover **metadata only**, not another native call or result body. Changed input fails. Existing reservations are checked before target visibility, so recovery works after the **target capability plugin** is disabled/uninstalled, provided Legion Bridge, the original session/state and authorization remain available. A reservation without saved metadata is unknown, possibly in flight or interrupted; do not switch keys to bypass it. This is local duplicate suppression, not cross-machine exactly-once.
-
-v1 records have no authoritative ancestor evidence: cached success cannot establish `native.state: "succeeded"`, and no old text is replayed; an explicit old failure may remain `failed`. A recovered receipt returning normally does not itself mean execution succeeded. Legacy files are not automatically deleted.
-
-**Legacy delivery is a separate historical fact, now preserved on recovery.** A v1 record reads its original message ACK and returns only allowed metadata, with `historical: true` and `attempted_now: false`. Valid `received`, `rejected` and `unconfirmed` states are retained with `record_state: "available"`. Missing, unreadable or invalid ACKs return `unconfirmed` with `record_state: "missing"`, `"unreadable"` or `"invalid"`, never an invented “not sent” conclusion. Recovery does not resend, rewrite the old records or replay `server_response`/result bodies.
-
-允许返回的可选 ACK 字段只有有效 HTTP 状态和脱敏、至多 500 字符的 `reason`；畸形可选字段省略并附 `record_warning`。v1 祖先证据不足与历史消息投递是两件事：前者不能报原生成功，后者不再抹掉旧 `received`。这项修复已纳入当前全套；仍不证明消费、不授权重发，也不等于完整 Host 卸载／恢复旅程通过。
-
-### Local images are not remote media / 本机图片不等于远端媒体
-
-The content projection has a **12,288-byte budget** plus string, shape and depth limits, not a budget for the entire receipt. Explicit image/audio/video content, data URLs and explicitly marked media/encoded fields are omitted. Ordinary long strings and hash identifiers are not classified as base64 by length or appearance; they still obey the existing truncation budget. `media_return` states `text_metadata_only; media cannot be returned in full`. Redaction is not a universal secret detector or a complete markup/URI parser.
-
-Local successful image content is forwarded through DSH user context; additional contexts and turn completion stay on the native path. They are **not** attached to the explicit remote text message. 本机图片、结构化输出、回合结束和后续消息需分别在真实 Host 复验；已有官方 Runtime 隔离证据，不能从投影、元数据回执或全套通过推断作者实际收到或完整协作通过。
-
-## 7. Optional Legion configuration / 可选个人服务配置
-
-These are user/operator settings, not model task parameters. The token value is read only from the Host environment; unknown configuration fields, including inline token values, are rejected.
-
-以下是用户／运营者配置，不接受任务参数改地址、塞令牌或增加权限。
-
-| Setting / 字段 | Contract / 默认与边界 |
+| 字段 | 默认与边界 |
 |---|---|
-| `baseUrl` | Falls back to `LEGION_BASE_URL`, then loopback port 8000; does not start a service. HTTPS remotely, HTTP only on loopback; no URL credentials/query/fragment. / 回退地址不代表提供后端。 |
-| `tokenEnv` | Defaults to `LEGION_PERSONAL_TOKEN`; an environment variable **name**, not the secret itself. / 只能填变量名。 |
-| `stateDirectory` | Falls back to `DSH_LEGION_STATE_DIR`, then `legion-state` under `DSH_HOME` or the user's `.dsh` directory. Relative paths use the Host working directory; prefer a private explicit directory and retain it. / 状态目录须保持私有。 |
-| `candidateHarnesses` | Ordered user-selected array; non-empty becomes `plan.team_policy.candidate_harnesses`. Omission/`[]` omits `plan`; raw `null` fails. No default or fallback. / 候选不由连接器代选。 |
-| `projectBindingFile` | User-configured absolute path to JSON at most 16 KiB, containing only `workspace_root`, an absolute directory already authorized by the operator. / 不授予权限，不上传工作区。 |
-| `requestTimeoutMs` | Default 30,000 ms, bounds the local wait, not remote task runtime. / 只限制本地等待。 |
-| `maxResponseBytes` | Default 4 MiB for a JSON response or dispatch SSE event. / 单次 JSON 响应或接单事件上限。 |
-| `maxArtifactBytes` | Default 50 MiB per download. / 单文件下载上限。 |
-| `maxEvents` | Default 100, configurable 1–500 per returned page. / 事件分页上限。 |
+| `baseUrl` | `LEGION_BASE_URL` → 回环 8000 端口；不启动服务。远端 HTTPS，HTTP 仅回环；拒绝 URL 凭据／query／fragment。 |
+| `tokenEnv` | 默认 `LEGION_PERSONAL_TOKEN`，仅为 Host 环境变量**名称**。 |
+| `stateDirectory` | `DSH_LEGION_STATE_DIR` → `DSH_HOME` 或用户 `.dsh` 下的 `legion-state`；相对路径基于 Host 工作目录。选私有目录并保留恢复记录。 |
+| `candidateHarnesses` | 用户选定有序数组；非空传 `plan.team_policy.candidate_harnesses`，省略／`[]` 不传 plan，`null` 拒绝。无连接器默认成员或兜底。 |
+| `projectBindingFile` | 绝对路径 JSON，至多 16 KiB，仅含 `workspace_root`：运营者已授权的绝对目录。不上传工作区、不授予新权限。 |
+| `requestTimeoutMs` | 默认 30,000，范围 100–300,000；只限制本次 HTTP 等待，不限制远端任务运行。 |
+| `maxResponseBytes` | 默认 4 MiB，范围 1 KiB–32 MiB；JSON 响应／接单 SSE 事件上限。 |
+| `maxArtifactBytes` | 默认 50 MiB，范围 1 字节–1 GiB；单次下载上限。 |
+| `maxEvents` | 默认 100，范围 1–500；状态事件和来信分页上限。 |
 
-API routes retain the configured service path prefix; this has offline coverage, **not real reverse-proxy acceptance**. Optional bindings become `project_context`; they do not let the model choose a different authorized workspace. / 路径前缀离线覆盖不能代替实服反代验证；绑定不能被模型用来另选目录。
+API 保留配置的服务路径前缀；实际反代仍需部署者验证。project binding 成为 `project_context`，不让模型另选授权目录。
 
-## 8. Existing task lifecycle / 原有任务生命周期
+## 8. Task lifecycle and mailbox
 
-### Identity, submit and progress / 身份、派单与进度
+### Submit and observe
 
-- `task_ref` is a local 32-hex reference scoped to the configured service and DSH session. The saved `team_id` / `session_id` identify the Legion team/conversation; they are not authorization credentials. `legion_list` only reads the local index. / 换 DSH 会话不会自动继承这些引用。
-- Before dispatch, the store atomically reserves the reference and input digest. Same key/input reuses it without another POST; changed input fails. Candidate order contributes to the digest. This is local duplicate-send suppression, not server-enforced or cross-machine exactly-once. / 丢状态或换候选不能作为安全重投依据。
-- Submit POSTs `/api/legion/dispatch` with `question`, saved team/session identities, `mode: "auto"`, `allow_direct_model: false`, and optional configured binding/candidates. Only a matching SSE `meta` (`team_id`, `sid`) confirms acceptance; then the local reader closes. / 关闭接单读取不取消远端工作，也不启动第二个循环。
-- `submission: "accepted"` means acknowledged, not completed. HTTP 4xx except 408 records `rejected`; HTTP 5xx, 408, timeouts, disconnects or absent/mismatched acknowledgements stay `unconfirmed`. Keep the same key/ref, recover via `list`, and query `status` rather than redispatch. / 未确认不等于未执行。
-- Status GETs `/api/legion/team?team_id=…` and `/api/legion/events?team_id=…&after=…`. It checks both saved team and `conversation_id`; missing/mismatched conversation identity fails. Replay must also name the same team. Task IDs come from task-map keys, not nested content. / 不放宽身份核对。
-- Events use numeric `event_id`, `next_event_id` and `more_events`; an empty visible page alone is not end-of-history. Omitting the cursor starts at zero. Status and events are not an atomic snapshot. / 保留分页与观察时点差异。
-- Returned status/events are sanitized and bounded, not full traces. Error/failure-stage text remains observable where supplied. Runtime, artifacts and `experience_verification` stay separate facts. / 不把诊断可见或服务自评当总验收。
+- `task_ref` 为配置服务与 DSH 会话范围内的本地 32 位十六进制引用；保存的 `team_id`／`session_id` 指向 Legion team／conversation，不是凭据。`legion_list` 读本地索引，不查实时进度；换 DSH 会话不自动继承引用。
+- 提交前原子预约引用和输入 digest；同 key 同输入不再 POST，不同输入拒绝。候选顺序计入 digest；丢记录或换 key 不让未知副作用变得可安全重投。
+- POST `/api/legion/dispatch`，含 `question`、team／session 身份、`mode: "auto"`、`allow_direct_model: false` 及可选项目绑定／候选。只有相符 SSE `meta` 的 `team_id`／`sid` 确认接单，随后关闭本地读取；关闭不取消远端任务。
+- `submission: "accepted"` 不是完成。HTTP 4xx（408 除外）为 `rejected`；5xx、408、超时、断线或缺失／不符 ACK 为 `unconfirmed`，不等于未执行。保留原 key／ref，用 list／status 恢复观察。
+- status GET `/api/legion/team` 及 `/api/legion/events`，检查保存的 team 和 `conversation_id`；缺失／不符会失败。task ID 来自 task-map 的键，不信任正文内自报 ID。
+- `after_event_id` 为非负安全整数，省略从 0 起；返回 `event_id`、`next_event_id`、`more_events`。status／events 非原子快照，空可见页不等于历史结束。输出有限且脱敏，不是完整 trace；运行、产物及服务自评是并列事实。
 
-### Commander mailbox observation / commander 来信观察
+### Commander messages
 
-- `status.mailbox` projects only `mailboxes.commander` from the same identity-checked `/team` response, with `source: "team.mailboxes.commander"` and `trust: "untrusted_source"`. It does not call `/team/messages`, whose default behavior marks messages read. / 复用已核对 team 与 conversation 身份的回包，不另走默认标读接口。
-- Optional `after_message_id` is a non-negative safe integer, defaulting to `0`, independent of `after_event_id`. Messages with larger IDs are returned in ascending order, at most `maxEvents` (default `100`) per page. When `more_messages: true`, pass `next_message_id` as the next `after_message_id`; `total_messages` counts the entire returned commander mailbox, not only this page. / 消息与事件各用自己的游标；省略消息游标始终从第一页开始，不保存或自动推进消费位置。
-- Pagination is a local projection of the bounded `/team` snapshot, not server-side pagination or an atomic history view; it does not reduce the HTTP response size. / 仍受原有响应字节上限限制，翻页不代表取得全部历史。
-- Messages retain `id`, `from`, `to`, `text`, `ts` and, when supplied, the original `read_at`. Timestamps remain service seconds; absent `read_at` stays absent. `read_receipts_modified: false` and `model_consumption: "not_observed"` mean observation neither writes read receipts nor proves model consumption. It does not execute message text or resume work. / 已有 `read_at` 只是原始 UI 已读事实；显示、翻页、读回都不能标为模型已消费，也不自动执行或唤醒。
-- `state: "available"` with `messages: []` is an observed empty page. Missing/invalid mailboxes instead return `state: "not_returned"` / `"invalid"`, `messages: null` and a diagnostic; unknown counts/continuation remain `null`, not an empty-mailbox claim. Sanitization remains in force: `truncated`, `text_truncated`, `artifact_refs_truncated` and `projection` retain clipping facts. `text_source: "inline_preview"` marks a referenced long-body preview, not a fetched full body; artifact references expose bounded non-path metadata only. / 缺失或畸形不报“空邮箱”；脱敏、正文预览和分页截断如实保留，不跟随私有路径取全文。
+`status.mailbox` 只投影同一已核身份 `/team` 响应的 `mailboxes.commander`，标记 `source: "team.mailboxes.commander"`、`trust: "untrusted_source"`；不调用默认会标读的 `/team/messages`。
 
-### Follow-up, mailbox, recovery and cancellation / 续作、邮箱、恢复与取消
+`after_message_id` 为独立非负安全整数，默认 0。按 ID 升序返回大于游标的消息，每页至多 maxEvents；`more_messages` 为真时用 `next_message_id` 继续。`total_messages` 计整个返回 mailbox，不是当前页。分页是有大小限制的 team 快照的本地投影，不减少 HTTP 体积、不保存消费位置，也不是原子历史。
 
-| Action / 动作 | Contract / 契约 |
+消息保留 `id`, `from`, `to`, `text`, `ts` 及存在时的 `read_at`；时间为服务秒数，缺失 read_at 不补造。`read_receipts_modified: false`、`model_consumption: "not_observed"` 表示不标读、不确认模型消费、不执行文字或恢复工作。
+
+`available` 且 `messages: []` 才是观察到空页；未返回／畸形分别为 `not_returned`／`invalid`，`messages: null` 并附原因，未知数量／续页保留 null。保留 `truncated`、`text_truncated`、`artifact_refs_truncated`、`projection`；`text_source: "inline_preview"` 是长正文预览，不是已取全文，产物引用仅含有限非路径元数据。
+
+### Follow-up actions and acknowledgements
+
+| 动作 | 行为 |
 |---|---|
-| `continue` / submit with `previous_task_ref` | New key, same Legion session, **new team**; explicit new work, not retry or reconnect. / 同会话开新一轮。 |
-| `message` | POST `/api/legion/team/message` with saved `team_id`, `recipient`, `text`, fixed `sender: "commander"`; receipt does not establish model consumption. / 仅投递，不自动唤醒。 |
-| `resume` | POST `/api/legion/team/resume`; requests recovery of interrupted recoverable work, not rerunning completed work. `no recoverable tasks` is not successful recovery. / 终态新工作不能用恢复冒充。 |
-| `cancel` | POST `/api/legion/cancel`; `ok: true` → `requested`, `ok: false` → `rejected`, no explicit `ok` → `unconfirmed`; `stopped_confirmed` remains false. / 已请求不等于进程已停。 |
+| `continue`／带 `previous_task_ref` 的 submit | 新 key、同 Legion session、**新 team**；明确新工作，不是重试或重连。 |
+| `message` | POST `/api/legion/team/message`，保存的 team、明确 recipient／text、固定 `sender: "commander"`。仅投递，不自动唤醒终态任务。 |
+| `resume` | POST `/api/legion/team/resume`，请求中断工作的恢复；不是重跑完成任务，`no recoverable tasks` 不是恢复成功。 |
+| `cancel` | POST `/api/legion/cancel`；明确 `ok: true` 为 `requested`，false 为 `rejected`，无 ok 为 `unconfirmed`；`stopped_confirmed: false`。 |
 
-Message/resume reserve `operation_key` and an input digest before sending. Same key restores only whitelisted ACK metadata without resending, replaying old response bodies or rewriting records; changed input fails. Missing/corrupt ACKs stay unconfirmed, not “never sent.” Recovery rechecks cancellation/disposal after the asynchronous read. JSON `ok: false` is rejected; HTTP/transport uncertainty follows the submission rules. Only minimal sanitized acknowledgements are stored, not arbitrary raw replies. Cancel has no operation-key ledger; its HTTP/transport errors are raised directly. Returned `runtime.cancel_requests`, if present, are observations, not proof of process termination.
+message／resume 发送前预约操作 key 和 digest；首次返回可含清理后的 `server_response`，持久化及同键恢复只保留 ACK 元数据，不再发送或回旧响应。恢复的合法 acknowledgement 为 `received`／`rejected`／`unconfirmed`；仅允许整数 HTTP 状态 100–599、已脱敏至多 500 字符 reason。缺失／不可读／坏形状为可见的 `unconfirmed`；坏可选字段省略并带 `record_warning`，不改旧记录。
 
-消息／恢复也不能换键绕过未知结果。取消错误直接报错，不造回执。本地中断、停用或卸载不会自动取消远端工作。
+JSON `ok:false` 表示拒绝；HTTP／网络未知按提交边界处理。cancel 没有操作 key 账本，其 HTTP／传输错误直接报错。ACK、`read_at`、`cancel_requests` 都不证明模型消费或进程停止；本地 abort／卸载也不会自动取消远端工作。
 
-## 9. Formal exports and retained data / 正式导出与数据保留
+## 9. Formal exports and retention
 
-Exports are discovered in authenticated task results/events (`artifacts`, `discovered_artifacts` and `artifact_ready`). `legion_download` accepts only the observed `artifact_id`, re-reads live task authorization and rechecks metadata. It does not accept arbitrary URLs or destination paths. Only same-origin formal export routes qualify, without URL credentials, query/fragment or redirects; configured service prefixes are retained once.
+正式导出来自已授权任务结果／事件的 `artifacts`、`discovered_artifacts`、`artifact_ready`。download 只接受已观察 `artifact_id`，重新检查实时任务身份／权限及元数据；不能由调用方选 URL 或目标路径。仅同源正式导出路由，保留服务路径前缀，拒绝凭据／query／fragment／重定向。
 
-下载必须来自任务中观察到的正式导出，实时复核权限和元数据，不能拿历史本地记录当新授权。
+必须有合法 `sha256` 或 `provenance.sha256`；两者都存在则须各自合法且一致。声明大小也须合法；下载有限字节到私有临时文件，hash 与声明大小匹配后才重命名。`integrity: "sha256_verified"` 只说明字节与服务声明一致，`experience_verification: "not_performed_by_plugin"` 不作安全、正确性或体验保证。
 
-An export needs valid SHA-256 in `sha256` or `provenance.sha256`; when both are present they must each be valid and agree. Declared sizes must also be valid. Downloaded bytes are bounded, written privately to a temporary file and renamed only after matching hash and any declared size. Success reports `integrity: "sha256_verified"` and `experience_verification: "not_performed_by_plugin"`: integrity is not file safety, correct behavior or experience acceptance. Service verification text remains attributed to the service.
-
-来源文件 hash 是固定源码整文件观察；生成包 hash 是预期写入值；下载 hash 是已收字节与服务声明的比对。三者不能混为同一种“验收通过”。
-
-Local state retains references, keys/digests, minimal receipts, an event cursor and export metadata. The **v2 native-call ledger saves status metadata only, not result bodies**. Old v1 files are not automatically erased; task text or images may remain in earlier records, actual tool results, both systems' sessions and user files. Raw tasks/full histories are not separately copied into the recovery index. Artifact observations are atomic per `artifact_id`; legacy `artifacts.json` remains readable, with per-ID entries taking precedence. These records are not live authority. User files and state are **not deleted on uninstall**.
-
-两端会话、返回文本、生成工程和下载文件各有数据保留范围；不作“零留存”承诺。状态和用户文件卸载后仍保留。完整边界见[安全说明](SECURITY.md)。
+来源 hash 是整文件观察，包装 hash 是预期写入，下载 hash 是实际收取字节比对，三者不能互当验收。恢复索引留引用、key／digest、最小回执、游标和导出元数据；v2 原生记录不留正文。旧 v1、两端会话、工程及下载文件仍可能有正文或媒体，卸载不删除。产物观察按 artifact_id 原子保存，兼容旧 `artifacts.json`，新 per-ID 记录优先；本地记录不是实时授权。详见[安全说明](SECURITY.md)。
