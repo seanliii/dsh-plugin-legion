@@ -211,6 +211,46 @@ test('bundle writes use native write, stop on denied partial writes, and do not 
   assert.equal(writes.length, 3)
 })
 
+for (const [directory, target] of [
+  ['/tmp/legion-fixture-bundle', 'file:/tmp/legion-fixture-bundle'],
+  ['/tmp/legion advice/生成包', 'file:/tmp/legion advice/生成包'],
+]) {
+  test(`bundle install advice preserves the file spec without executing it: ${directory}`, async t => {
+    const { writeBundle } = await moduleUnderTest()
+    const { parseInstallSpec } = await import('@deepseek-ai/dsh-plugin-manager')
+    const { ctx, agent, signal } = await runtime(t)
+    const writes = []
+    let enclosing, installs = 0
+    ctx.tools.register(tool('plugin_manager', () => { installs++; return {} }))
+    ctx.tools.register(tool('write', (args, exec) => {
+      assert.equal(exec.agent, agent)
+      assert.equal(exec.signal, signal)
+      assert.equal(exec.parent, enclosing.token)
+      assert.equal(exec.rootCallId, 'file-advice')
+      writes.push(args)
+      return {}
+    }, { file_path: { type: 'string', required: true }, content: { type: 'string', required: true } }))
+    ctx.tools.register(tool('outer', (_args, exec) => {
+      enclosing = exec
+      return writeBundle(ctx, exec, directory, {
+        packageName: '@fixture/install-advice', version: '1.0.0', plugins: [],
+        files: [{ path: 'package.json', content: '{}', sha256: 'a'.repeat(64) }],
+      })
+    }))
+    const result = await ctx.tools.execute({ name: 'outer', arguments: {}, agent, signal, callId: 'file-advice' })
+    assert.equal(result.isError, false, JSON.stringify(result))
+    assert.equal(result.value.directory, directory, 'The native write destination is not an install spec')
+    assert.equal(writes[0].file_path, `${directory}/package.json`)
+    assert.deepEqual(result.value.install, {
+      tool: 'plugin_manager', arguments: { action: 'install_bundle', target, enabled: false },
+    })
+    assert.equal(parseInstallSpec(result.value.install.arguments.target).path, directory)
+    assert.equal(result.value.state, 'written_not_installed')
+    assert.equal(result.value.execution_verified, false)
+    assert.equal(installs, 0, 'Advice cannot invoke the native installer or consume approval')
+  })
+}
+
 test('bundle destinations cannot write a profile or escape the output directory', async t => {
   const { writeBundle } = await moduleUnderTest()
   const { ctx, agent, signal } = await runtime(t)

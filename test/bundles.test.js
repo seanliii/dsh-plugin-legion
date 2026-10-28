@@ -278,8 +278,15 @@ test('generated instructions separate package installation, independent rows and
   const example = readme.match(/```json\n([\s\S]*?)\n```/)
   assert.ok(example, 'The generated README must show the native installation operation')
   assert.deepEqual(JSON.parse(example[1]), {
-    action: 'install_bundle', target: '/absolute/workspace/adapted-bundle', enabled: false,
+    action: 'install_bundle', target: 'file:/absolute/workspace/adapted-bundle', enabled: false,
   })
+  assert.match(readme, /file:.*tar/)
+  assert.match(readme, /link:.*不会.*安装.*依赖/)
+  assert.match(readme, /patch rowId.*moduleName.*不是.*entryId/)
+  assert.match(readme, /disabled.*entryId.*不要猜/)
+  assert.match(readme, /list_plugins.*entryId/)
+  assert.match(readme, /安装、选择、激活和调用.*事实/)
+  assert.match(readme, /禁用不等于禁止.*构建脚本/)
   assert.match(readme, /安装单位是整个 bundle 包/)
   assert.match(readme, /subpath 不是独立 npm 包/)
   assert.match(readme, /set_bundle/)
