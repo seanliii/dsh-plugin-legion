@@ -6,6 +6,7 @@ import { executeLegionCommand, executionFrom } from './lib/commands.js'
 import { capabilityContext } from './lib/ecosystem.js'
 import { registerEcosystem } from './lib/extension.js'
 import { credentialFilePath } from './lib/credentials.js'
+import { executeWorkbenchCommand } from './lib/workbench.js'
 
 export const name = 'legion'
 export const inject = ['tools']
@@ -189,7 +190,7 @@ export function apply(ctx, liveConfig) {
     }))
   }
 
-  registerEcosystem(ctx, client, config, lifecycle.signal)
+  const { sources } = registerEcosystem(ctx, client, config, lifecycle.signal)
 
   // CLI/Web adapters may provide commands; headless hosts need only the tools.
   // Own registration through the injected child, so service replacement cleans up.
@@ -199,6 +200,17 @@ export function apply(ctx, liveConfig) {
       description: '提交或跟进军团任务，查询进度、发送消息、恢复、取消与下载。',
       input: { hint: 'help | runtime | start | list | status | message | resume | cancel | download | continue' },
       handler: invocation => executeLegionCommand(client, invocation),
+    })
+    commandCtx.commands.register({
+      name: 'legion-panel',
+      description: '军团工作台的原生数据接口；使用当前会话身份，不把界面查询记入对话输入。',
+      recordInput: false,
+      input: { hint: 'JSON: action, args' },
+      handler: invocation => executeWorkbenchCommand(commandCtx, client, sources, {
+        ...invocation,
+        // Public reads bypass LegionClient but still belong to this plugin lifetime.
+        signal: AbortSignal.any([invocation.signal, lifecycle.signal]),
+      }),
     })
   })
 }

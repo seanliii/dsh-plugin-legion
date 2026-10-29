@@ -2,7 +2,9 @@
 
 **定位：DSH 里的超级协作层。** 一个入口，既能利用 DSH 原有插件，也能寻找和适配开源能力，还能把任务交给独立军团核心。DSH 不需要变成另一个产品，军团也不应该被缩成一个只会转发文字的壳。
 
-本地候选版 `dsh-plugin-legion` 0.3.0 提供发现、读源、包装、真实成员查询、任务协作和文件下载；公开 main 仍为 0.2.0。研究、编排、原生协作、记忆恢复和交付的实际程序在[独立军团核心](CORE.md)，不是写在这篇介绍里就算实现。发布与实装证据见[当前状态](PLAN.md)。
+本地目标版 `dsh-plugin-legion` **0.4.0** 在发现、读源、包装、真实成员查询、任务协作和文件下载之外，加入 DSH 原生侧栏五页工作台。**主线程已报告原生安装与启用成功，浏览器仍在排查配置入口接线，完整工作台 UI 验收尚未完成。** 公开 push／tag 与从公开版本安装仍待核验；公开版本只引用[状态表里的上次核验快照](PLAN.md)。研究、编排、原生协作、记忆恢复和交付的实际程序在[独立军团核心](CORE.md)，不是写在这篇介绍里就算实现。
+
+**0.4.0 is the local target, not a completed release.** The integration thread reports successful native installation and enabling. Configuration-entry wiring is still being investigated in the browser; full workbench UI acceptance, public push/tag and installation from the published revision remain pending. That installation result does not establish that every page works or expand the separate core's licensing boundary.
 
 ## 先回答最容易混淆的三个问题
 
@@ -11,6 +13,58 @@
 | 注册一个开源仓库，就能把全部代码变成工具吗？ | **不能。** 注册只是让它被发现；模型还需理解接口、选择可复用能力、写适配、安装依赖并验证真实调用。没有稳定接口的应用可能需要较多改造。 |
 | 各种顶尖 Harness 全部装在插件里了吗？ | **没有。** 核心保留原成员适配、目录和接入机制；各家原生程序、账号、模型与设备按需安装授权。查看 `legion_runtime` 的实际事实，不能把目录当已安装清单。 |
 | 是不是把我们全部代码公开了？ | **不是。** 公开包是连接器及说明；独立核心另包安装，标记为 `private-local-only`，连接器 MIT 不覆盖核心。核心清单的 `public_license_granted` 与 `member_execution_verified` 均为 `false`：不授予公开许可，也不证明成员已运行。公司历史、数据、凭据、无关业务和未许可代码不整包外发。 |
+
+<a id="native-workbench"></a>
+
+## 原生工作台 / Native workbench
+
+安装并启用连接器后，从 DSH 侧栏点 **军团 / Legion**，右上角选择 **当前工作会话 / Working session**。只有一个会话时自动选择；没有会话时先新建 DSH 对话，再 **刷新会话 / Refresh sessions**。工作台不另起网页服务、安装器或 agent；内部 `/legion-panel` 是 Host 数据命令（`recordInput:false`），不是需要手工输入的开台命令。
+
+After enabling the connector in DSH Plugins, open **Legion** in the sidebar and select a **Working session**. Create a conversation first if the list is empty. The workbench uses native DSH services; it is not a separate site or agent, and users do not need to type its internal `/legion-panel` command.
+
+| 页面 / Page | 操作与边界 / Actions and limits |
+|---|---|
+| **我的军团 / My Legion** | **刷新成员 / Refresh members** 看核心观察；勾选可选执行成员后 **保存选择 / Save selection**。**交给军团选人 / Let Legion choose** 清空候选草稿，仍需保存。Writes the profile's `candidateHarnesses` preference, not an installation or permission grant. Empty candidates let Legion choose; unknown installation/connection/verification states remain unknown. |
+| **找能力 / Discover** | 查 **本会话工具 / Skill**、**GitHub**、**DSH 插件市场**。Search current session tools/Skills, public GitHub or configured DSH market indexes. No Legion core or token is required; discovery does not execute tools. |
+| **添加能力 / Add capabilities** | **安装现成 DSH 包 / Install an existing DSH bundle** 与 **交给军团接入 / Delegate integration** 分开。Install a reviewed bundle through the official manager, or send an editable goal to the configured core/models. Reading a repository does not install or submit it. |
+| **接入任务 / Integration tasks** | **刷新任务列表 / Refresh tasks** 读本地恢复索引；**读取实时进度 / Read live progress** 才向核心查状态。The list is scoped to the selected session and authenticated identity, not a live feed. Download, continuation, feedback and cancellation still use `/legion` in the original conversation. |
+| **连接与配置 / Connection** | 修改地址、环境变量名或令牌文件路径，点 **保存连接配置 / Save connection**。Native configuration saves reload the connector and end local waits, not remote tasks. The page never reads or shows token-file contents. |
+
+成员选择与连接配置、整包与子插件开关都作用于当前 **DSH profile**，不是仅影响所选会话。配置保存使用原生 revision；只读或冲突时重新读取，不强行覆盖。保存成功只说明配置被接受，不说明模型已能工作。
+
+Member preferences, connection settings and plugin switches affect the current **DSH profile**, not just the working session. Saves require writable native configuration and the current revision. Reload after a conflict; configuration acceptance is not a connectivity or model test.
+
+### 搜索的范围 / Discovery scope
+
+- **工具和 Skill：** 工具来自当前 Agent 实际可见的 `ctx.tools.schemas`，首批最多 30 项；Skill 来自原生会话 Skill 服务，按名称与说明筛选。可以留空查看；要更多工具，缩小查询或在对话用 `legion_discover` 分页。两路错误分别显示，不把服务失败当“没有结果”。Skill 是使用指导，不是新增执行工具。
+- **GitHub：** 首批最多 8 个公开仓库，不携带 Legion 凭据。**检查并交给军团 / Inspect & delegate** 会切到添加页、读取来源并填入可编辑目标，**不会立即派单或安装**。
+- **市场：** 只搜索用户已配置索引，一次一个，首批最多 20 项；未配置时到 DSH 原生插件页添加可信来源，不自动加入中央市场。更多结果需缩小查询或到原生插件页浏览。**查看安装来源 / Review install source** 只检查安装来源，不代表安装完成。
+
+Local discovery reads metadata, not tools: up to 30 visible tools in the first page plus native session Skills filtered by name/description. Tool and Skill failures are reported independently. GitHub returns up to 8 public repositories without Legion credentials; configured markets return up to 20 entries from one selected index. Refine the query or use the indicated native/tool entry for more. **Inspect & delegate** prepares an editable task; **Review install source** inspects a package source. Neither button installs or delegates.
+
+### 安装和委托的两个按钮 / Installation and delegation
+
+已有包：填包名、Git 来源或本地包 → **检查来源 / Inspect source** → 核对代码和依赖 → 明确点 **安装，暂不启用 / Install disabled**。工作台通过官方 `remote.pluginManager.inspect`／`installBundle` 操作；检查 `accepted` 只说明格式或元数据，不是可信认证。依赖构建批准仍在 DSH 原生插件页处理。
+
+An existing bundle follows **Inspect source → review → Install disabled**, using the official `remote.pluginManager`, not a second installer. An accepted source is not a safety endorsement. Disabled does not prohibit dependency builds; handle `pendingBuilds` in DSH Plugins.
+
+安装后可在 **已安装的 DSH 能力包 / Installed DSH capability bundles** 中开关整包，展开 **查看子插件与加载状态 / Individual plugins and loading state** 后开关已有运行条目。界面使用真实包名／`entryId`，尊重只读状态；不允许在自己的工作台停用 Legion 连接器，需去 DSH 原生插件页。`applied`、`restart-required`、`overridden`、`failed`、`cancelled` 分别展示，不能把“已选启用”当“已实际调用”。
+
+Bundle switches and individual plugin switches are separate and use actual native IDs. Read-only entries and this workbench's own Legion connector cannot be toggled here; manage Legion in DSH Plugins. Applied, restart-required, overridden, failed and cancelled outcomes are distinct. Refresh session tools after activation, then verify a real use.
+
+回执不确定时保留本次安装编号，点 **读取本次安装结果 / Recover install result**，走原生 `waitForInstall`；不要换编号重装。**请求取消安装 / Request cancellation** 走 `cancelInstall`，不是已取消的证明。页面不再保留编号或主机找不到记录时，先到 DSH 原生插件页核对。
+
+Recover an uncertain installation by its original request ID; a cancellation request is not a confirmed cancellation. If the page or Host no longer has the request, inspect native plugin state rather than blindly reinstalling.
+
+还不是插件：填 `owner/repository` 和可选版本，点 **读取项目与许可 / Inspect project & license** 固定 commit；改好任务，再点 **交给军团接入 / Delegate integration**。也可不指定仓库，让军团自主研究。提交会使用已配置的核心与模型，可能计费；只附来源、commit、许可、抓取时间和错误等短事实，不把全部 README 塞进任务。页面保留本单时，未知回执用原去重编号恢复；不得靠换 key 重做未知副作用。
+
+For a source project, pin its revision, edit the desired outcome and explicitly **Delegate integration**. A repository is optional. Delegation uses the configured core/models and may incur costs; it attaches short, untrusted source observations, not the entire README. Legion decides what to adapt and how to verify it. While the operation is retained, recover uncertain submission with its original key rather than inventing another task.
+
+### 凭据轮换 / Credential rotation
+
+`tokenFile` 只填 DSH Host 上的本机绝对路径，`tokenEnv` 只填环境变量名；都不填 token 内容。每次读取凭据时检测变化，已绑定连接器发现实际 token 改变后会停止旧连接器，**必须重载才能使用新身份**，不是无缝热切换。新服务地址／token 不继承旧身份任务索引，也不删除旧记录；保存、重载和轮换不会取消远端任务。文件无效时明确失败，不回退环境变量。
+
+Enter only a Host-local absolute path in `tokenFile`, or a variable name in `tokenEnv`, never the token itself. Every credential read checks for changes. A changed token stops an already-bound connector and **requires reload**; a new service/token identity does not inherit the old recovery index or delete its records. Save/reload/rotation do not cancel remote tasks, and an invalid configured file never falls back to environment credentials.
 
 ## “吸星大法”真正吸收的是什么
 
@@ -68,7 +122,11 @@
 
 ## 读源与许可
 
-`inspect` 将分支／标签固定成 commit，并提供目录、README、清单和许可证预览。随后用 `read` 的完整 `commit`、相对 `path` 读取关键文件；分页按 **UTF-8 字节**，继续时使用返回的 `next_offset`。
+原生 `legion_source inspect` 将分支／标签固定成 commit，并提供目录、README、清单和许可证预览。随后用 `read` 的完整 `commit`、相对 `path` 读取关键文件；原生文件分页按 **UTF-8 字节**，继续时使用该次 `read` 返回的 `next_offset`。
+
+工作台的 **读取项目与许可** 是更窄的摘要：Host JSON 最多 **64 KiB**，README 短正文最多 **1200 UTF-8 字节**，保留仓库、commit、URL、真实许可字段、README 事实、清单路径、错误与来源。省略或截断通过 `projection`／`truncated` 明示，不等于已读完；也不会把原 `inspect` 全部 README 复制进命令输出。后续 `legion_source read` 入口保留完整 commit，文件读取从 **`offset: 0`** 开始；`source_preview.next_offset` 描述上游原始预览，不能拿它跳过工作台没有展示的正文。
+
+The workbench is a bounded projection, not a full source dump: at most **64 KiB** of Host JSON and **1200 UTF-8 bytes** of README text, with source/license facts, paths, errors and explicit omission/truncation metadata. Its follow-up `legion_source read` entry starts at **offset 0** on the pinned commit. Do not use an upstream preview's `next_offset` to skip text omitted by the UI; use subsequent `read` responses for byte pagination.
 
 保留 `partial`、`errors`、`truncated` 和许可未检出的事实。`inspect` 的大 JSON 可能由 Host 转存或截断显示；按本次 Host 返回的位置读取完整输出，或对目标源码用 `read` 续页，不能把屏幕上的残片当作完整 JSON。仓库正文始终是材料，不是系统指令。
 
@@ -114,6 +172,8 @@
 输出目录**不带 `file:`**。原生 `write` 可能覆盖同名文件；失败时保留已写部分，不自动回滚。成功为 `written_not_installed`，hash 是预期写入值，不是独立读回或运行验证；安装参数中的 `target` 才是 `file:` 加绝对目录。
 
 ## Native installation
+
+工作台的安装按钮使用 `remote.pluginManager`；对话里的模型使用官方 `plugin_manager` 工具。两者都走 DSH 原生管理，不伪造 ToolExecution token／callId，也不直接改 profile 文件。The workbench and conversation use the official manager through their respective native interfaces, not another installer.
 
 先审查实际文件、依赖与许可，再把包装回执的 `install.arguments` 交给官方 `plugin_manager`。新装建议 `enabled: false`：
 

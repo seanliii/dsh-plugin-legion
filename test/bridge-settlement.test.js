@@ -163,8 +163,9 @@ async function fixture(t, { structured = false } = {}) {
     })
     f.lifecycle = new AbortController()
     const lifecycle = f.lifecycle
-    f.extension = ctx.inject(['tools'], injected =>
-      registerEcosystem(injected, client, config, lifecycle.signal))
+    f.extension = ctx.inject(['tools'], injected => {
+      registerEcosystem(injected, client, config, lifecycle.signal)
+    })
     await f.extension
   }
   await f.restartClient()

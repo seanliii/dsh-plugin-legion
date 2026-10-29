@@ -1,14 +1,14 @@
 # Protocol / 协议
 
-本页描述 **Legion 0.3.0** 的连接器代码契约，不保证所有 Legion 部署都实现相同 API。DSH 保留主循环和工具决策；连接器不增设调度器或质量裁判。入门见 [English](../README.md)／[中文](../README.zh-CN.md)，独立程序见[核心说明](CORE.md)，实装与发布进度只在[状态表](PLAN.md)维护。
+本页描述 **Legion 0.4.0** 的连接器代码契约，不保证所有 Legion 部署都实现相同 API。DSH 保留主循环和工具决策；连接器不增设调度器或质量裁判。入门见 [English](../README.md)／[中文](../README.zh-CN.md)，独立程序见[核心说明](CORE.md)，实装与发布进度只在[状态表](PLAN.md)维护。**代码契约不是浏览器配置、完整工作台或公开安装验收记录。**
 
 ## 1. Runtime and native tools
 
 清单要求 Node `>=24.9.0`、`engines.dsh: "0.2.1-rc.2"`；peers 为 `@deepseek-ai/dsh-llm`、`@deepseek-ai/dsh-tools` 的精确 `0.2.1-rc.2` 及 `@deepseek-ai/schemastery: "~3.18.5"`。`dsh.bundle.patch` 指向 `./cordis.patch.yml`，连接器自身只插入 `id: legion`、`name: dsh-plugin-legion` 一行；它与生成的多能力包是不同安装件。
 
 - `write` 负责工作区写入，`plugin_manager` 负责安装／启停；市场发现使用可选、当前 Agent 可见的 `plugin_market`。
-- 有 `skills` 服务才注册 `legion-ecosystem`；有 `commands` 才注册 `/legion` 命令。
-- 原生委托使用 `ctx.tools.execute({ callId, rootCallId, parent: exec.token, agent: exec.agent, signal: exec.signal, name, arguments })`，不直调工具执行体。signal 同时响应原生取消和连接器卸载，`deferContext`／`concludeTurn` 绑定原始 execution；这些对象不发给 Legion。
+- 有 `skills` 服务才注册 `legion-ecosystem`；有 `commands` 才注册 `/legion` 和 `/legion-panel`。后者是工作台的人类命令，不增加模型工具数量。
+- `legion_call` 的原生工具委托使用 `ctx.tools.execute({ callId, rootCallId, parent: exec.token, agent: exec.agent, signal: exec.signal, name, arguments })`，不直调工具执行体。signal 同时响应原生取消和连接器卸载，`deferContext`／`concludeTurn` 绑定原始 execution；这些对象不发给 Legion。人类命令不伪造这类 `ToolExecution` token 或调用链。
 - 成功图片内容经本地 user context 转交，`additionalContexts` 和结束回合信息沿原生路径转交，不等于远端文本消息携带媒体。
 
 ## 2. Model tools and commands
@@ -30,7 +30,7 @@
 | `legion_cancel` | `task_ref` | `reason` |
 | `legion_download` | `task_ref`, `artifact_id` | 无 |
 
-新增 discover／source／bundle／call 没有对应的新斜杠子命令；通过普通对话或模型工具使用。既有命令如下：
+discover／source／bundle／call 不是 `/legion` 的位置参数子命令；普通对话中的模型工具保留原入口。工作台另用下文的 `/legion-panel`，不能借它打包或执行原生工具。既有 `/legion` 命令如下：
 
 ```text
 /legion help
@@ -46,6 +46,133 @@
 ```
 
 `status` 命令的 cursor 是事件游标；消息游标用模型工具参数。引用必须明确，不支持 `latest` 或命令附件。命令成功、工具执行和远端任务完成不是同一观察。
+
+<a id="legion-panel"></a>
+
+### Native workbench command / 原生工作台命令
+
+入口为 `executeWorkbenchCommand(ctx, client, sources, invocation)`；复用既有 `LegionClient` 和 `registerEcosystem` 创建的**同一个 `GitHubSources`**，没有另起 Agent、安装器或 HTTP 接口。Host 注册 `/legion-panel` 时设置 `recordInput: false`，不把界面请求记成对话输入；这不是结果、Host 日志或远端任务的零留存承诺。
+
+`invocation` 是 Host 提供的 `CommandInvocation { agent, rawInput, signal, attachments }`。`executionFrom` 只从真实 `agent.id` 和本次 `AbortSignal` 取得会话与取消上下文；无有效身份、无信号或已取消时失败，不借用其他会话。`attachments` 只能省略或为 `[]`。
+
+`rawInput` 是命令名后面的 JSON 文本，最多 **2 MiB（UTF-8）**；根对象只接受 `action`、可选 `args`。省略 `args` 等于 `{}`，显式 `null`、数组、未知字段或未知动作均拒绝，不做类型转换。不能传入 `agentId`、`sessionId`、`agent`、`config`、`token`、`tokenFile`、`baseUrl`、`signal`、`callId` 等权限／环境字段；`context` 也只能是背景文本，不是权限对象。
+
+| `action` | `args` 与边界 | 复用入口 |
+|---|---|---|
+| `runtime` | 必填 `view: "members"`、`"capabilities"` 或 `"catalog"`；本命令不设默认 view。 | `client.runtime` |
+| `tools` | 可选 `query`（最多 500 字符，允许空）、`offset`（默认 0）、`limit`（1–30，默认 10）；数值必须是非负／范围内安全整数。 | `ctx.tools.schemas(invocation.agent)`，只读当前 Agent 元数据 |
+| `github` | 非空 `query`，最多 2048 字符；可选 `limit` 为 1–100，默认 5。仅第一页，不接受 offset。 | `sources.search` |
+| `inspect` | 非空 `repository`，最多 256 字符；可选非空 `ref`，最多 1024 字符。仓库／ref 语法和公开来源规则由 `GitHubSources` 继续校验。 | `sources.inspect`，再作窄投影 |
+| `tasks` | 无参数；省略 `args` 或传 `{}`。 | `client.list` |
+| `status` | 必填 `task_ref`，恰为 32 位小写十六进制；不支持省略、`latest` 或事件／消息游标参数。 | `client.status` |
+| `submit` | 非空 `key`（最多 160 字符）、`query`（最多 100000 字符）；可选文本 `context`（最多 200000 字符，允许空）。 | `client.submit`，保留原 key 去重／恢复 |
+
+字符上限按 JavaScript 字符串长度校验；不接受含孤立代理项的字符串。`submit` 不接受 `previous_task_ref`、`tool_names`、候选成员或安装配置；这些不因存在于其他工具契约就自动开放给工作台命令。
+
+五页不是五条新命令，也不是所有按钮都经此适配器：
+
+| 页面 | 实际通道 |
+|---|---|
+| 我的军团 / My Legion | `runtime` 的 members 观察；保存选择走原生配置服务的 `candidateHarnesses`，不是安装或授权。 |
+| 找能力 / Discover | `tools`／`github`；Skill 列表走原生 `skills`，市场走原生 `pluginMarket` 的已配置索引。Skill 是指导，不是新增工具。 |
+| 添加能力 / Add capabilities | `inspect` 准备来源事实，明确委托才 `submit`；检查、安装和开关走官方 `pluginManager`，不是新增 panel 动作。 |
+| 接入任务 / Integration tasks | `tasks` 读本地索引，`status` 主动读实时观察；不自动轮询或执行来信。 |
+| 连接与配置 / Connection | 原生配置表单读写地址与凭据引用，不经命令 JSON 传凭据；成员候选在我的军团页保存。 |
+
+`tools`、`github`、`inspect` 不要求 Legion 核心或 token；Skill、市场和安装使用主机实际提供的服务，缺少服务不绕过。`runtime`／`status`／`submit` 使用已配置核心与身份；`tasks` 虽不发 HTTP，也要通过当前凭据、身份与生命周期检查。切换工作会话改变工具和任务上下文，不把同 profile 的配置／能力包开关变成会话私有。下载、反馈、续作、恢复和远端取消仍用原对话的 `/legion` 或相应模型工具，工作台不另增这些动作。操作说明见[五页工作台](ECOSYSTEM.md#native-workbench)。
+
+### CommandResult and value shapes / 回执形状
+
+官方 `CommandResult` 外层只有这里使用的 `kind` 和 `text`：成功为 `kind: "success"`，`text` 是 `{ ok: true, action, value }` 的 JSON 字符串；错误为 `kind: "error"`，`text` 是 `{ ok: false, action, error }`，可另有 `diagnostics`。解析／未知动作错误的 `action` 为 `null`；已识别动作的参数或执行错误保留动作名。不回显未知字段名、JSON 原文片段或任意异常附件。
+
+下表为投影前的主要字段，不是承诺任意大小的字段都会完整保留；成功的 `value` 另有 `projection`、`truncated`：
+
+| 动作 | `value` 的主要形状 |
+|---|---|
+| `runtime` | `{ view, source, observed_at, runtime, verification }`；`verification` 为 `service_observation_only_no_execution`。 |
+| `tools` | `{ tools: [{ name, description }], total, offset, limit, next_offset, scope, source, metadata_only, execution_performed, grants_remote_access }`；不是顶层工具数组，也不返回参数 schema。 |
+| `github` | `{ trust, status, query, repositories, total_count, incomplete_results, source, fetched_at }`；保留来源和不完整事实，不推断安装或可用。 |
+| `inspect` | `{ repository, commit, url, metadata, license, readme, readme_status, manifests, tree, errors, continuation, ... }` 的有限事实，保留来源与实际状态；细节见下文。 |
+| `tasks` | `{ tasks: [{ task_ref, key, team_id, created_at, previous_task_ref? }], source: "local_recovery_index_not_live_status" }`；不是服务实时任务全表。 |
+| `status` | `{ task_ref, team_id, connection, runtime, events, next_event_id, more_events, artifacts, mailbox, artifact_source, experience_verification }`。本入口默认从事件／消息游标 0 读取；后续分页用 `legion_status` 的游标参数。 |
+| `submit` | `{ task_ref, team_id, session_id, submission, next, ... }`；依回执可有 `reason`、`http_status`、`reused`、`request_sent`、`remote_task_cancelled`。 |
+
+`ok: true` 只表示命令交回了观察。`submission: "accepted"` 是接单，`"unconfirmed"` 仍是不确定，二者都不是任务完成。重读到已保存的 `"rejected"` 时返回错误，并在 `diagnostics` 保留有限回执和原引用；首次异常不保证附带引用，可用原会话 `tasks` 找记录。网络错误、取消或输出过大都不能推断“没有派单”，不要换 key 盲目重发。仅客户端已有“未进入 HTTP 发送”的持久化证据时，允许修复后用原 key 重试；工作台不自行判断未发送。
+
+来源异常通过 `sourceErrorDiagnostics` 保留类型化的安全原因和限流等白名单事实，仍为错误通道；不透传响应正文、原始 `cause`、堆栈或任意 diagnostics。可用的 `partial` 来源观察会保留 `status`、`errors`，不伪装完整成功。
+
+<a id="workbench-projection"></a>
+
+### Bounded workbench output / 工作台有限投影
+
+- `client.clean`／`redactText` 先清理，再按 UTF-8 边界截短。整个 `text` JSON 上限 **64 KiB**；普通数据投影预算 40 KiB，单段文本 4096 字节，每个数组至多 100 项、对象至多 100 字段、深度上限 8。最终仍超限时返回 `kind: "error"`，带 `diagnostics.truncated: true`，不截破 JSON 或换成看似完整的空成功。
+- `projection` 保留 `omitted_fields`、`truncated_fields` 及去重后的 `omitted_fields_count`、`truncated_fields_count`，附 `limits`。每类至多展示 64 条路径、每条至多 160 字节，路径元数据总预算 16 KiB；有省略时标 `paths_truncated`。路径本身也脱敏。
+- `tools` 只保留 `name`、最多 1024 字节的 `description`；名称超过 1024 字节直接报错，不造一个截短的可调用名称。按名字／描述匹配查询词并分页；`total` 是匹配总数，`next_offset` 按实际返回行数前进。工具页数据预算为 38 KiB，未显示的字段／行明确记录；只读元数据，`execution_performed: false`、`grants_remote_access: false`。
+- `inspect` 保留固定 repository／commit／URL、真实 metadata／license 字段、README 事实及最多 **1200 字节**正文、manifest 路径与文件事实、目录摘要、errors 和来源。不返回完整目录 `entries`，不复制 manifest 或许可证正文；README 标 `content_preview: true`。`source_truncated` 保留来源原始截断值，`source_preview` 内的 offset／字节数属于来源读取页，**不是清理后的 UI 正文字节数**。
+- 每个文件的 `next` 指向 `legion_source` 的 `read`，从 `offset: 0` 开始，避免跳过 UI 未展示的正文；顶层 `continuation` 保留固定 commit，并要求补 `path`。它们是后续入口，不会自动执行。模型工具的大 inspect／按字节续页机制仍见[公开源读取](#4-public-source-reading)。
+
+任意字段被省略或截短，成功 `value.truncated` 也会为真；这可能只是参数 schema 被主动省略，不等于来源失败。反过来，缺失字段、短 README、清单数量或任务 `done` 都不能当成“不存在”“已安装”“已可用”或质量判断。
+
+### JSON examples / 格式示例
+
+下列只说明语法，不是已经执行的公开验收。仓库名与全零任务引用是占位符，需换成公开来源和当前会话的真实引用；**实际执行 `submit` 会派单，可能产生模型费用**。
+
+```text
+/legion-panel {"action":"runtime","args":{"view":"members"}}
+/legion-panel {"action":"tools","args":{"query":"read","offset":0,"limit":10}}
+/legion-panel {"action":"github","args":{"query":"markdown parser","limit":5}}
+/legion-panel {"action":"inspect","args":{"repository":"owner/repository","ref":"main"}}
+/legion-panel {"action":"tasks"}
+/legion-panel {"action":"status","args":{"task_ref":"00000000000000000000000000000000"}}
+/legion-panel {"action":"submit","args":{"key":"example-integration-1","query":"将选定的公开项目接入 DSH，并报告实际可用范围。","context":"这是文档格式示例，不包含私有材料。"}}
+```
+
+假设 tools 查询没有匹配项：外层 `kind` 为 `"success"`，下面是 **`JSON.parse(result.text)`**，不是 CommandResult 根对象：
+
+```json
+{
+  "ok": true,
+  "action": "tools",
+  "value": {
+    "scope": "current_dsh_agent",
+    "source": "dsh.tools.schemas",
+    "metadata_only": true,
+    "execution_performed": false,
+    "grants_remote_access": false,
+    "tools": [],
+    "total": 0,
+    "offset": 0,
+    "limit": 10,
+    "next_offset": null,
+    "truncated": false,
+    "projection": {
+      "omitted_fields": [],
+      "truncated_fields": [],
+      "limits": {
+        "output_bytes": 65536,
+        "text_bytes": 4096,
+        "array_items": 100,
+        "object_fields": 100,
+        "depth": 8,
+        "tool_description_bytes": 1024,
+        "readme_bytes": 1200
+      },
+      "omitted_fields_count": 0,
+      "truncated_fields_count": 0
+    }
+  }
+}
+```
+
+例如输入 `{"action":"install"}` 不会转给安装器，外层返回 `"error"`；解开 `text` 后为：
+
+```json
+{
+  "ok": false,
+  "action": null,
+  "error": "未知工作台动作；仅支持 runtime、tools、github、inspect、tasks、status、submit。"
+}
+```
 
 ### Service runtime observations
 
@@ -81,7 +208,7 @@
 
 ### Large output and failures
 
-大 `inspect` JSON 仍交给 Host 的原生输出／转存机制；显示片段可能不是完整 JSON。依据本次工具结果中的转存位置读取完整输出，或对所需源码使用 `read` 续页。连接器没有用 compact `additionalContexts` 重建全文，也不把 repo 正文升级为 instruction。
+模型工具 `legion_source` 的大 `inspect` JSON 仍交给 Host 的原生输出／转存机制；显示片段可能不是完整 JSON。依据本次工具结果中的转存位置读取完整输出，或对所需源码使用 `read` 续页。连接器没有用 compact `additionalContexts` 重建全文，也不把 repo 正文升级为 instruction。**`/legion-panel` 不返回这份完整 inspect**，而是上述[工作台窄投影](#workbench-projection)，保留后续 `legion_source` 入口。
 
 类型化来源错误只保留本地定义的 `name`, `message`, `code`, `trust`，以及可用的 `status`, `rate_limit`, `retry_after_seconds`, `retryable`。`rate_limit` 含 `limit`, `remaining`, `used`, `reset_epoch_seconds`, `resource`；未知／不合法值保留 `null`，不编造重试时刻。
 
@@ -179,7 +306,7 @@ v1 没有祖先证据，旧成功不能确认原生成功，旧正文不回放�
 |---|---|
 | `baseUrl` | `LEGION_BASE_URL` → 回环 8000 端口；不启动服务。远端 HTTPS，HTTP 仅回环；拒绝 URL 凭据／query／fragment。 |
 | `tokenEnv` | 默认 `LEGION_PERSONAL_TOKEN`，仅为 Host 环境变量**名称**。 |
-| `tokenFile` | 可选本机绝对路径；设置后优先于 `tokenEnv`，失败不回退。每次请求重读，最多 4096 字节；本人所有、无 group/world 权限、单硬链接的普通文件。 |
+| `tokenFile` | 可选本机绝对路径；设置后优先于 `tokenEnv`，失败不回退。每次凭据读取重读，最多 4096 字节；本人所有、无 group/world 权限、单硬链接的普通文件。检测到已绑定的实际身份变化后停止旧连接器，须重载。 |
 | `stateDirectory` | `DSH_LEGION_STATE_DIR` → `DSH_HOME` 或用户 `.dsh` 下的 `legion-state`；相对路径基于 Host 工作目录。选私有目录并保留恢复记录。 |
 | `candidateHarnesses` | 用户选定有序数组；非空传 `plan.team_policy.candidate_harnesses`，省略／`[]` 不传 plan，`null` 拒绝。无连接器默认成员或兜底。 |
 | `projectBindingFile` | 绝对路径 JSON，至多 16 KiB，仅含 `workspace_root`：运营者已授权的绝对目录。不上传工作区、不授予新权限。 |
@@ -192,14 +319,24 @@ API 保留配置的服务路径前缀；实际反代仍需部署者验证。proj
 
 令牌文件拒绝末级文件及其直接父目录的符号链接、目录或其它非普通文件、空值、多行／非法 HTTP 头字符以及读取期间变化；这不是对任意祖先目录或整台主机的安全认证。实际使用过的新旧值仅在进程内加入脱敏，不保存到恢复索引。提交前读取配置，缺失凭据不占用新的派单键。
 
+<a id="identity-reload"></a>
+
+### Credential rotation, reload and identity / 轮换、重载与身份
+
+1. 凭据文件不是启动时读一次，也没有后台自动换身份的保证。每次使用重新读取，受身份约束的操作按**规范化服务地址＋实际 token 值**校验身份；不是按 token 文件名或环境变量名识别用户。环境变量中的实际 token 改变也适用。
+2. 连接器一旦绑定身份，再检测到身份不同，会 `dispose` 旧客户端并明确要求**重载插件**；不把旧任务带到新身份继续请求。重载后新实例才可使用新身份，是否被核心接受仍需服务验证。文件失效直接报错、不回退环境变量；修复为同一有效凭据不意味着换了身份。
+3. 原生配置使用可重载的完整快照。保存提交后的 `loader/volatile-update` 先停止旧生命周期，再由原生 fiber 重启；重启失败时旧客户端也不会继续服务。工作台的 **重新读取配置 / Reload configuration** 只重读表单，不等于重载连接器。保存须通过可写原生配置和 revision 校验，不能借 `/legion-panel` 写 profile 或凭据。
+4. 恢复索引按服务／实际 token 身份及 DSH 会话隔离。新地址或新 token 不继承、迁移或删除旧引用；只改凭据文件路径／变量名且实际身份不变，不会创建新身份。保留原 stateDirectory、同一身份和同一 DSH 会话才可恢复原记录；历史上仅按服务隔离的旧索引不自动并入。中断操作的回执仍落在原索引，不写进新身份。
+5. **保存配置、重载、检测到轮换、卸载或取消本地等待，都不发送远端任务取消请求。** 已接单或结果不明的远端工作可能继续；只有另行明确使用 `legion_cancel`／`/legion cancel` 请求取消，再核对实际状态。超时和取消 ACK 也不证明远端进程已停。
+
 独立核心 `meyo.py dsh-config --state-dir <实例>` 复用实例配置与登录身份检查，返回 `{plugin, config:{baseUrl,tokenFile}, verification:"configuration_only_no_model_request"}`。不打印令牌、不改环境／Host profile、不联网；返回配置不等于服务启动或模型可用。路径必须能由 DSH 所在的主机和 OS 用户读取。
 
 ## 8. Task lifecycle and mailbox
 
 ### Submit and observe
 
-- `task_ref` 为配置服务与 DSH 会话范围内的本地 32 位十六进制引用；保存的 `team_id`／`session_id` 指向 Legion team／conversation，不是凭据。`legion_list` 读本地索引，不查实时进度；换 DSH 会话不自动继承引用。
-- 提交前原子预约引用和输入 digest；同 key 同输入不再 POST，不同输入拒绝。候选顺序计入 digest；丢记录或换 key 不让未知副作用变得可安全重投。
+- `task_ref` 为配置服务、实际凭据身份与 DSH 会话范围内的本地 32 位十六进制引用；保存的 `team_id`／`session_id` 指向 Legion team／conversation，不是凭据。`legion_list`／panel `tasks` 读本地索引，不查实时进度；换 DSH 会话或身份不自动继承引用。
+- 提交前原子预约引用和输入 digest；同 key 同输入通常只恢复回执、不再 POST，不同输入拒绝。唯一重试例外是客户端保存了明确未进入 HTTP 发送的证据，修复后原子领取原 key 的重试机会；缺失／不确定 ACK 不构成该证据。候选顺序计入 digest；丢记录或换 key 不让未知副作用变得可安全重投。
 - POST `/api/legion/dispatch`，含 `question`、team／session 身份、`mode: "auto"`、`allow_direct_model: false` 及可选项目绑定／候选。只有相符 SSE `meta` 的 `team_id`／`sid` 确认接单，随后关闭本地读取；关闭不取消远端任务。
 - `submission: "accepted"` 不是完成。HTTP 4xx（408 除外）为 `rejected`；5xx、408、超时、断线或缺失／不符 ACK 为 `unconfirmed`，不等于未执行。保留原 key／ref，用 list／status 恢复观察。
 - status GET `/api/legion/team` 及 `/api/legion/events`，检查保存的 team 和 `conversation_id`；缺失／不符会失败。task ID 来自 task-map 的键，不信任正文内自报 ID。

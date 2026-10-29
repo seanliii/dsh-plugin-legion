@@ -203,15 +203,21 @@ test('the Node SDK export stays compatible and declared client peers remain on t
   assert.equal(sdk.LegionClient, LegionClient)
   const pkg = JSON.parse(await readFile(new URL('../package.json', import.meta.url), 'utf8'))
   const lock = JSON.parse(await readFile(new URL('../package-lock.json', import.meta.url), 'utf8'))
-  assert.equal(pkg.version, '0.3.0')
+  assert.equal(pkg.version, '0.4.0')
+  assert.equal(lock.version, pkg.version)
+  assert.equal(lock.packages[''].version, pkg.version)
   assert.equal(pkg.engines.dsh, '0.2.1-rc.2')
   assert.equal(pkg.dsh.client?.platform, 'web')
   assert.ok(pkg.files.includes('client/'), 'The official package must ship the browser entry')
   const dependencies = [
+    '@deepseek-ai/dsh-api-remotes',
     '@deepseek-ai/dsh-api-session-controller',
     '@deepseek-ai/dsh-client-locale',
     '@deepseek-ai/dsh-client-ui-commands',
     '@deepseek-ai/dsh-client-ui-conversation',
+    '@deepseek-ai/dsh-client-ui-layout',
+    '@deepseek-ai/dsh-client-ui-settings',
+    '@deepseek-ai/dsh-client-ui-sidebar',
   ]
   for (const name of dependencies) {
     assert.ok(pkg.dsh.client.inject.includes(name))

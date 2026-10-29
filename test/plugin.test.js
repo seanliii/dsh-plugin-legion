@@ -542,6 +542,173 @@ test('plugin unload cancels a pending public source read without aborting the ca
   assert.equal(controller.signal.aborted, false)
 })
 
+for (const action of ['github', 'inspect']) {
+  test(`panel ${action} is cancelled by plugin unload without a core token or caller cancellation`, async t => {
+    const plugin = await loadPlugin()
+    const { ctx, install } = await host(t, { commands: true })
+    const started = Promise.withResolvers()
+    const response = Promise.withResolvers()
+    let requestSignal
+    globalThis.fetch.mock.mockImplementation((url, options) => {
+      assert.equal(new URL(url).origin, 'https://api.github.com')
+      assert.equal(options.headers.Authorization, undefined)
+      assert.equal(options.credentials, 'omit')
+      requestSignal = options.signal
+      started.resolve()
+      return response.promise
+    })
+    assert.equal(process.env[isolatedConfig.tokenEnv], undefined)
+    const fiber = await install(plugin, { ...isolatedConfig, requestTimeoutMs: 1000 })
+    await new Promise(resolve => setImmediate(resolve))
+    const events = []
+    const agent = {
+      id: 'panel-source-agent', ctx,
+      session: { id: 'not-the-agent-id', append(type, data) { events.push({ type, data }); return events.length } },
+    }
+    const caller = new AbortController()
+    const args = action === 'github' ? { query: 'offline-public-fixture' } : { repository: 'fixture/project' }
+    const pending = ctx.commands.execute(agent, `/legion-panel ${JSON.stringify({ action, args })}`, [], caller.signal)
+    await started.promise
+    await fiber.dispose()
+    const abortedAfterUnload = requestSignal.aborted
+    // Release even an abort-ignoring transport before asserting, so red tests do not hang.
+    response.resolve(action === 'github'
+      ? Response.json({ total_count: 0, incomplete_results: false, items: [] })
+      : Response.json({ message: 'Fixture not found' }, { status: 404 }))
+    const settled = await pending
+    assert.equal(abortedAfterUnload, true, 'Plugin lifetime must reach public workbench requests')
+    assert.equal(caller.signal.aborted, false)
+    assert.equal(settled.result.kind, 'error')
+    assert.equal(JSON.parse(settled.result.text).diagnostics.code, 'ABORTED')
+    assert.deepEqual(events.map(event => event.type), ['command/run', 'command/done'])
+    assert.ok(events.every(event => event.data.commandId === settled.commandId))
+    assert.equal(Object.hasOwn(events[0].data, 'args'), false)
+    assert.equal(ctx.commands.list(agent).length, 0)
+    assert.equal(globalThis.fetch.mock.callCount(), 1)
+  })
+}
+
+test('panel human commands retain the exact agent and caller cancellation without ToolExecution methods', async t => {
+  const plugin = await loadPlugin()
+  const { ctx, install } = await host(t, { commands: true })
+  const started = Promise.withResolvers()
+  const response = Promise.withResolvers()
+  let requestSignal
+  let pendingRequest = true
+  const searchResponse = () => Response.json({ total_count: 0, incomplete_results: false, items: [] })
+  globalThis.fetch.mock.mockImplementation((url, options) => {
+    assert.equal(new URL(url).origin, 'https://api.github.com')
+    assert.equal(options.headers.Authorization, undefined)
+    if (!pendingRequest) return searchResponse()
+    requestSignal = options.signal
+    started.resolve()
+    return response.promise
+  })
+  await install(plugin, isolatedConfig)
+  await new Promise(resolve => setImmediate(resolve))
+  const events = []
+  const agent = {
+    id: 'panel-current-agent', ctx,
+    session: { id: 'not-the-agent-id', append(type, data) { events.push({ type, data }); return events.length } },
+  }
+  const schemas = ctx.tools.schemas.bind(ctx.tools)
+  t.mock.method(ctx.tools, 'schemas', current => {
+    assert.equal(current, agent, 'The native tool view must receive the original Agent object')
+    return schemas(current)
+  })
+  const caller = new AbortController()
+  const tools = await ctx.commands.execute(agent,
+    '/legion-panel {"action":"tools","args":{"query":"legion_source","limit":1}}', [], caller.signal)
+  assert.equal(tools.result.kind, 'success')
+  assert.deepEqual(JSON.parse(tools.result.text).value.tools.map(tool => tool.name), ['legion_source'])
+  const line = '/legion-panel {"action":"github","args":{"query":"offline-public-fixture"}}'
+  const pending = ctx.commands.execute(agent, line, [], caller.signal)
+  const rejected = assert.rejects(pending, { name: 'AbortError' })
+  await started.promise
+  caller.abort(new DOMException('Fixture caller cancelled', 'AbortError'))
+  response.resolve(searchResponse())
+  await rejected
+  assert.equal(requestSignal.aborted, true)
+  assert.equal(ctx.commands.list(agent).length, 2, 'A caller abort must not unload the plugin')
+  pendingRequest = false
+  const next = await ctx.commands.execute(agent, line, [], new AbortController().signal)
+  assert.equal(next.result.kind, 'success', 'A fresh command must not inherit another caller cancellation')
+  assert.equal(globalThis.fetch.mock.callCount(), 2)
+  for (let index = 0; index < events.length; index += 2) {
+    assert.equal(events[index].type, 'command/run')
+    assert.equal(events[index + 1].type, 'command/done')
+    assert.equal(events[index].data.commandId, events[index + 1].data.commandId)
+  }
+})
+
+test('panel unload preserves an in-flight submit reference and unconfirmed receipt across reinstall without redispatch', async t => {
+  const plugin = await loadPlugin()
+  const { ctx, install } = await host(t, { commands: true })
+  const stateDirectory = await mkdtemp(join(tmpdir(), 'legion-panel-unload-'))
+  t.after(() => rm(stateDirectory, { recursive: true, force: true }))
+  const config = { ...isolatedConfig, stateDirectory }
+  // Real client and recovery store; only token acquisition and HTTP are doubled.
+  t.mock.method(LegionClient.prototype, 'token', () => 'fixture-only-panel-token')
+  const cancelled = t.mock.method(LegionClient.prototype, 'cancel', () => assert.fail('No remote cancel on unload'))
+  const started = Promise.withResolvers()
+  let requestSignal
+  let dispatch
+  globalThis.fetch.mock.mockImplementation((url, options) => {
+    assert.equal(new URL(url).pathname, '/api/legion/dispatch', 'No remote cancel or other operation is allowed')
+    assert.equal(options.method, 'POST')
+    dispatch = JSON.parse(options.body)
+    requestSignal = options.signal
+    started.resolve()
+    return new Promise((_resolve, reject) => {
+      options.signal.addEventListener('abort', () => reject(options.signal.reason), { once: true })
+    })
+  })
+  const fiber = await install(plugin, config)
+  await new Promise(resolve => setImmediate(resolve))
+  const events = []
+  const agent = {
+    id: 'panel-submit-agent', ctx,
+    session: { id: 'not-the-agent-id', append(type, data) { events.push({ type, data }); return events.length } },
+  }
+  const caller = new AbortController()
+  const args = { key: 'original-key', query: 'Keep  this\nhuman task', context: 'Original human context' }
+  const line = `/legion-panel ${JSON.stringify({ action: 'submit', args })}`
+  const pending = ctx.commands.execute(agent, line, [], caller.signal)
+  await started.promise
+  await fiber.dispose()
+  const settled = await pending
+  const receipt = JSON.parse(settled.result.text).value
+  assert.equal(requestSignal.aborted, true)
+  assert.equal(caller.signal.aborted, false)
+  assert.equal(settled.result.kind, 'success', 'A recoverable unknown receipt must not be replaced with an abort error')
+  assert.equal(receipt.submission, 'unconfirmed')
+  assert.equal(receipt.remote_task_cancelled, false)
+  assert.match(receipt.task_ref, /^[a-f0-9]{32}$/)
+  assert.equal(receipt.team_id, dispatch.team_id)
+  assert.equal(receipt.session_id, dispatch.session_id)
+  assert.ok(dispatch.question.startsWith(args.query + '\n\n'))
+  assert.ok(dispatch.question.endsWith(args.context))
+  assert.equal(events[0].data.commandId, settled.commandId)
+  assert.equal(events[1].data.commandId, settled.commandId)
+  assert.equal(JSON.parse(events[1].data.text).value.task_ref, receipt.task_ref)
+
+  await install(plugin, config)
+  await new Promise(resolve => setImmediate(resolve))
+  const repeated = await ctx.commands.execute(agent, line, [], caller.signal)
+  const recovered = JSON.parse(repeated.result.text).value
+  assert.equal(repeated.result.kind, 'success')
+  assert.equal(recovered.submission, 'unconfirmed')
+  assert.equal(recovered.task_ref, receipt.task_ref)
+  assert.equal(recovered.reused, true)
+  const tasks = await ctx.commands.execute(agent, '/legion-panel {"action":"tasks"}', [], caller.signal)
+  assert.deepEqual(JSON.parse(tasks.result.text).value.tasks.map(task => task.task_ref), [receipt.task_ref])
+  const foreign = await ctx.commands.execute({ ...agent, id: 'different-agent' },
+    '/legion-panel {"action":"tasks"}', [], caller.signal)
+  assert.deepEqual(JSON.parse(foreign.result.text).value.tasks, [], 'The recovery owner is agent.id, not session.id')
+  assert.equal(globalThis.fetch.mock.callCount(), 1, 'Unknown submissions must not dispatch again after reload')
+  assert.equal(cancelled.mock.callCount(), 0)
+})
+
 test('submission includes only explicitly selected visible tool schemas, not remote tool grants', async t => {
   const plugin = await loadPlugin()
   const calls = recordClient(t)
@@ -608,7 +775,8 @@ test('optional commands arrive, unload and return without disposing the client o
   const firstCommands = await install(CommandRuntime)
   await new Promise(resolve => setImmediate(resolve))
   const agent = { id: 'command-agent', ctx }
-  assert.deepEqual(ctx.commands.list(agent).map(command => command.name), ['legion'])
+  assert.deepEqual(ctx.commands.list(agent).map(command => command.name).sort(), ['legion', 'legion-panel'])
+  assert.equal(ctx.commands.find(agent, 'legion-panel').recordInput, false)
   const signal = new AbortController().signal
   const result = await ctx.commands.find(agent, 'legion').handler({
     agent, rawInput: ' list', attachments: [], signal, commandId: 'fixture-command',
@@ -616,12 +784,21 @@ test('optional commands arrive, unload and return without disposing the client o
   assert.equal(result.kind, 'success')
   assert.equal(calls[0].method, 'list')
   assert.deepEqual(calls[0].args[0], { sessionId: agent.id, signal })
+  const panel = await ctx.commands.find(agent, 'legion-panel').handler({
+    agent, rawInput: '{"action":"tools","args":{"query":"legion","limit":30}}',
+    attachments: [], signal, commandId: 'fixture-workbench-command',
+  })
+  assert.equal(panel.kind, 'success')
+  const panelData = JSON.parse(panel.text)
+  assert.equal(panelData.action, 'tools')
+  assert.ok(panelData.value.tools.some(tool => tool.name === 'legion_submit'))
+  assert.ok(panelData.value.tools.every(tool => typeof tool.name === 'string'))
   await firstCommands.dispose()
   assert.equal(dispose.mock.callCount(), 0, 'Losing only the optional command service must not dispose tool work')
   assert.equal(ctx.tools.schemas().length, names.length)
   await install(CommandRuntime)
   await new Promise(resolve => setImmediate(resolve))
-  assert.equal(ctx.commands.list(agent).length, 1)
+  assert.equal(ctx.commands.list(agent).length, 2)
   await fiber.dispose()
   assert.equal(ctx.commands.list(agent).length, 0)
   assert.equal(ctx.tools.schemas().length, 0)
@@ -676,7 +853,7 @@ test('the same native host can unload and reinstall the plugin with a fresh clie
     const fiber = await install(plugin, isolatedConfig)
     await new Promise(resolve => setImmediate(resolve))
     assert.deepEqual(ctx.tools.schemas().map(tool => tool.name).sort(), names)
-    assert.deepEqual(ctx.commands.list(agent).map(command => command.name), ['legion'])
+    assert.deepEqual(ctx.commands.list(agent).map(command => command.name).sort(), ['legion', 'legion-panel'])
     const result = await ctx.tools.execute({
       name: 'legion_list', arguments: {}, callId: `reinstall-${round}`,
       agent, signal: new AbortController().signal,

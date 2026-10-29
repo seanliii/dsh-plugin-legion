@@ -44,7 +44,9 @@ async function runtime(t, fetchImpl, config = {}) {
   agent.ctx = scope.ctx
   const cancellation = new AbortController()
   const lifecycle = new AbortController()
-  const extension = ctx.inject(['tools'], injected => registerEcosystem(injected, {}, config, lifecycle.signal))
+  const extension = ctx.inject(['tools'], injected => {
+    registerEcosystem(injected, {}, config, lifecycle.signal)
+  })
   await extension
   t.after(async () => {
     lifecycle.abort()
@@ -735,7 +737,9 @@ test('native bundle plugin disposal and replacement do not inherit the previous 
   await f.extension.dispose()
   assert.equal((await callBundle(f)).error.info.code, 'UNKNOWN_TOOL')
   const lifecycle = new AbortController()
-  const next = f.ctx.inject(['tools'], ctx => registerEcosystem(ctx, {}, {}, lifecycle.signal))
+  const next = f.ctx.inject(['tools'], ctx => {
+    registerEcosystem(ctx, {}, {}, lifecycle.signal)
+  })
   await next
   t.after(async () => { lifecycle.abort(); await next.dispose() })
   const retry = await callBundle(f)
