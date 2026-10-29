@@ -2,9 +2,9 @@
 
 **定位：DSH 里的超级协作层。** 一个入口，既能利用 DSH 原有插件，也能寻找和适配开源能力，还能把任务交给独立军团核心。DSH 不需要变成另一个产品，军团也不应该被缩成一个只会转发文字的壳。
 
-本页介绍 `dsh-plugin-legion` **0.4.1**：在 DSH 原生侧栏五页工作台中发现能力、读源、包装、查询真实成员、协作和下载文件。安装使用固定标签 [v0.4.1](MARKET.md#v041)；封包时的源码回归、限定实操与发布后固定提交的新装分别记在[版本记录](PLAN.md#v041)。[0.4.0 历史公开与验收](PLAN.md#v040)仍按原日期、版本与 hash 归属，不作为 0.4.1 的完整 UI 或公开安装证明。研究、编排、原生协作、记忆恢复和交付的实际程序在[独立军团核心](CORE.md)，不是写在这篇介绍里就算实现。
+本页介绍 `dsh-plugin-legion` **0.4.1**：在 DSH 原生侧栏五页工作台中发现能力、读源、包装、查询真实成员、协作和下载文件。安装使用已公开的固定标签 [v0.4.1](MARKET.md#v041)；按完整提交匿名新装及限定的无核心原生 UI 检查已完成，与封包前实操分别记在[版本记录](PLAN.md#v041)。[0.4.0 历史公开与验收](PLAN.md#v040)仍按原日期、版本与 hash 归属，不作为 0.4.1 的完整 UI 或公开安装证明。研究、编排、原生协作、记忆恢复和交付的实际程序在[独立军团核心](CORE.md)，不是写在这篇介绍里就算实现。
 
-**This page describes connector 0.4.1 and its fixed-tag [installation route](MARKET.md#v041).** Packaging-time checks and the later anonymous installation of the exact public commit have [separate records](PLAN.md#v041); this version does not predeclare that public-installation check successful. Historical records retain their original dates, versions and hashes; neither those records nor the scoped checks establish full workbench UI coverage or expand the separate core's licensing boundary.
+**Connector 0.4.1 is publicly available through the fixed-tag [installation route](MARKET.md#v041).** Anonymous installation of the exact commit and scoped core-free native UI checks are complete, with [separate records](PLAN.md#v041) from packaging-time checks. A GitHub Release and the 0.4.1 catalog update remain pending at this update. Historical records retain their original dates, versions and hashes; neither those records nor the scoped checks establish full workbench UI coverage or expand the separate core's licensing boundary.
 
 ## 先回答最容易混淆的三个问题
 
@@ -12,7 +12,7 @@
 |---|---|
 | 注册一个开源仓库，就能把全部代码变成工具吗？ | **不能。** 注册只是让它被发现；模型还需理解接口、选择可复用能力、写适配、安装依赖并验证真实调用。没有稳定接口的应用可能需要较多改造。 |
 | 各种顶尖 Harness 全部装在插件里了吗？ | **没有。** 核心保留原成员适配、目录和接入机制；各家原生程序、账号、模型与设备按需安装授权。查看 `legion_runtime` 的实际事实，不能把目录当已安装清单。 |
-| 是不是把我们全部代码公开了？ | **不是。** 公开包是连接器及说明；独立核心另包安装，标记为 `private-local-only`，连接器 MIT 不覆盖核心。核心清单的 `public_license_granted` 与 `member_execution_verified` 均为 `false`：不授予公开许可，也不证明成员已运行。公司历史、数据、凭据、无关业务和未许可代码不整包外发。 |
+| 是不是把我们全部代码公开了？ | **不是。** 公开包是连接器及说明；独立核心另包安装，标记为 `private-local-only`，连接器 MIT 不覆盖核心。核心清单的 `public_license_granted` 与 `member_execution_verified` 均为 `false`，是包内固定字段，不用于判断用户的公开授权或成员的实际运行。核心尚无公众发行入口，来源许可清单仍需闭环。公司历史、数据、凭据、无关业务和未许可代码不整包外发。 |
 
 <a id="native-workbench"></a>
 

@@ -2,7 +2,7 @@
 
 English | [简体中文](README.zh-CN.md)
 
-Find existing tools, read public source, and install capability bundles you have reviewed—all within DSH. Connect a separately installed Legion core you are authorized to use to delegate research, collaboration, revisions and formal file delivery. **Connector version: 0.4.1; the separate `private-local-only` core has no public download release.**
+Find existing tools, read public source, and install capability bundles you have reviewed—all within DSH. Connect a separately installed Legion core you are authorized to use to delegate research, collaboration, revisions and formal file delivery. **Connector 0.4.1 is publicly available via Git/tag; the separate `private-local-only` core has no public download release.**
 
 ## Get started
 
@@ -63,13 +63,13 @@ Host plugins run **outside the agent sandbox**. Review code and dependencies bef
 
 ### Fixed-version Git installation — v0.4.1
 
-Use this version's fixed tag once published; replace the example `web` profile as needed and retain `-w`:
+Use the published fixed tag; replace the example `web` profile as needed and retain `-w`:
 
 ```sh
 dsh plugin --profile web -w add 'github:seanliii/dsh-plugin-legion#v0.4.1'
 ```
 
-The [installation guide](docs/MARKET.md#v041) separates packaging-time checks from the later anonymous installation of the exact public commit. Follow-up results belong in the repository's `main` documentation and Release; this frozen version does not claim that public-installation check has passed. Tags are not moved to incorporate later documentation.
+`v0.4.1` is fixed to **`87a2f4dae1c61e2764b7748ecb10ea7b367fcf2f`**. Anonymous installation of that full commit and the [scoped core-free native UI checks](docs/PLAN.md#public-r-acceptance) are verified; the fresh installation started disabled and retained a pnpm peer-dependency warning. At this update, a GitHub Release and the 0.4.1 catalog update are still pending; later documentation does not move this or older tags. The [installation guide](docs/MARKET.md#v041) also provides the exact-commit command and distinguishes the reviewed package from later documentation.
 
 <a id="fixed-version-public-git-installation--v040"></a>
 
@@ -177,4 +177,4 @@ Repository text, catalog descriptions and task messages are untrusted material, 
 
 Keep recovery state private. New v2 native-call records retain metadata, not result bodies; old records and both systems' sessions may still contain content. Uninstalling does not delete user files or cancel remote work.
 
-[MIT](LICENSE) covers this connector only. The separate core remains **`private-local-only`**; its first-party public license and third-party redistribution rights are unresolved, not inherited from this connector. The Marked acceptance bundle is a separate local artifact, not bundled with this connector. Private core code, user or instance data, credentials, private evidence and logs, company business code, company monorepos or their history, complete third-party upstream repositories and model weights are not shipped here. Neither the capability map nor one successful task proves all members are installed or work unattended. This is independent community code, not an official DeepSeek product.
+[MIT](LICENSE) covers this connector only. The separate core package is marked **`private-local-only`** and has no public distribution entry; its source-and-license inventory for public distribution still needs to be completed. These package fields do not determine the owner's authorization, nor does the connector's MIT license cover the core. The Marked acceptance bundle is a separate local artifact, not bundled with this connector. Private core code, user or instance data, credentials, private evidence and logs, company business code, company monorepos or their history, complete third-party upstream repositories and model weights are not shipped here. Neither the capability map nor one successful task proves all members are installed or work unattended. This is independent community code, not an official DeepSeek product.
