@@ -2,9 +2,9 @@
 
 本页提供 **0.4.1** 已公开的固定版本安装入口；公开新装、限定 UI 检查、封包验证和历史证据见[状态表](PLAN.md)。程序发布、安装、启用和目录审核分别记账。
 
-**本版安装目标为 `github:seanliii/dsh-plugin-legion#v0.4.1`，采用 Git/tag，不是 npm publish。** 固定提交的匿名全新安装已通过；截至本次回填，GitHub Release 尚未创建，0.4.1 社区目录说明尚未更新。独立核心包标记为 `private-local-only`，不包含在连接器中，尚无公众发行入口，来源许可清单仍需闭环。
+**本版安装目标为 `github:seanliii/dsh-plugin-legion#v0.4.1`，采用 Git/tag，不是 npm publish。** 固定提交的匿名全新安装已通过，GitHub Release 已公开；0.4.1 社区目录投稿已更新、仍待维护者审核。独立核心包标记为 `private-local-only`，不包含在连接器中，尚无公众发行入口；本地来源清单已完成，第一方部分的公开决定权范围与许可证仍待确认。
 
-**The public installation target is `github:seanliii/dsh-plugin-legion#v0.4.1`, via Git/tag rather than npm.** Anonymous fresh-profile installation of the fixed commit has passed. A GitHub Release and the 0.4.1 catalog update remain pending at this update. The separate core is not bundled, has no public distribution entry, and still needs a completed source-and-license inventory for public distribution.
+**The public installation target is `github:seanliii/dsh-plugin-legion#v0.4.1`, via Git/tag rather than npm.** Anonymous fresh-profile installation of the fixed commit has passed, and the GitHub Release is published; the 0.4.1 catalog update is open for maintainer review. The separate core is not bundled and has no public distribution entry. Its local provenance inventory is complete; the first-party authority to publish and license choice still need confirmation.
 
 ## 分清三种分发方式
 
@@ -40,11 +40,11 @@ dsh plugin --profile web -w add 'github:seanliii/dsh-plugin-legion#87a2f4dae1c61
 
 最终程序提交 **R = `87a2f4dae1c61e2764b7748ecb10ea7b367fcf2f`** 与 `v0.4.1` 已公开，标签固定指向 R。匿名全新 profile 按 R 安装退出 0，**29/29 个安装文件**与受审发行包一致；随后完成[限定的无核心原生 UI 检查](PLAN.md#public-r-acceptance)，不把安装和启用混为一谈。
 
-**R 的受审 TGZ：169,604 字节，29 个文件，SHA-256 为 `db7b8391a6c3bb98aa7d35bf38ad24836c61c97b98bdc571f8a2e7f946de0cce`。** 这是固定产物身份，不表示 GitHub Release 附件已经发布；当前公开安装入口是上方 Git/tag。
+**R 的受审 TGZ：169,604 字节，29 个文件，SHA-256 为 `db7b8391a6c3bb98aa7d35bf38ad24836c61c97b98bdc571f8a2e7f946de0cce`。** 原 TGZ 与 `SHA256SUMS` 已作为 [v0.4.1 Release](https://github.com/seanliii/dsh-plugin-legion/releases/tag/v0.4.1) 附件公开，发布后匿名下载的字节与 hash 均和受审文件一致。
 
-本次 **B 仅作后验文档回填**，不改 R 的程序、清单或版本，不移动 `v0.4.1` 与旧标签，也不替换 R 的受审 TGZ。从 B／`main` 重新打包会包含不同的文档字节，**不是这个已验 TGZ，不能沿用其 hash 或 29/29 核对回执**。封包文档与后验文档因此分别保留，不自引用尚未生成的 B 提交 SHA。
+后验纯文档 **B（`45e6efd2e3dab2e6f3562cc8fb80254888d03c6f`）** 已单独发布；本次 **C** 只补充发布、投稿与本地来源清单事实，不改程序、清单或版本，不移动 `v0.4.1` 与旧标签，也不替换 R 的受审 TGZ。从 B、C／`main` 重新打包会包含不同的文档字节，**不是这个已验 TGZ，不能沿用其 hash 或 29/29 核对回执**。封包文档与后验文档分别保留，C 不自引用尚未生成的自身提交 SHA。
 
-截至本次回填，**GitHub Release 尚未创建，0.4.1 社区目录更新尚未完成**；后续状态见[仓库 main 的版本记录](https://github.com/seanliii/dsh-plugin-legion/blob/main/docs/PLAN.md#v041)与 [Release 列表](https://github.com/seanliii/dsh-plugin-legion/releases)。维护者的原始回执、日志和截图未公开，也不是本页提供的可下载附件；不借旧 0.4.0 回执证明新版。
+0.4.1 目录投稿已更新，**同一 head 的 `static-review` 已成功，PR 仍待维护者审核、尚未合入**；具体提交、本地校验与 CI 分别见下方，后续状态见[仓库 main 的版本记录](https://github.com/seanliii/dsh-plugin-legion/blob/main/docs/PLAN.md#v041)。维护者的原始回执、日志和截图未公开，也不是 Release 附件；不借旧 0.4.0 回执证明新版。
 
 <a id="planned-v040"></a>
 <a id="v040"></a>
@@ -106,7 +106,7 @@ Check actual bundle/plugin loading state in **DSH Plugins**, then open **Legion*
 
 ## 社区目录：更新已有的一份 JSON
 
-目标为 [imsai-sh/awesome-deepseek-harness-plugins](https://github.com/imsai-sh/awesome-deepseek-harness-plugins) 的 `main`，不是姐妹站源码仓库。以下保留 **2026-10-29 已有投稿**的操作与结果，基于 `d87de872b119a9e058f5b619f71e9fac8eebfb83`，只更新已收录条目的双语说明；**本次尚未为 0.4.1 更新该投稿**：
+目标为 [imsai-sh/awesome-deepseek-harness-plugins](https://github.com/imsai-sh/awesome-deepseek-harness-plugins) 的 `main`，不是姐妹站源码仓库。本次沿用 **PR #748** 更新 **0.4.1**，只修改既有条目的双语说明；历史 0.4.0 投稿记录单独保留在下方：
 
 1. 公开仓库同一 revision 必须包含声明 `dsh.bundle.patch` 的清单及对应 patch；作者自行测试实际兼容性，并添加 `dsh-plugin` topic。
 2. 只修改 `catalog/plugins/seanliii--dsh-plugin-legion.json`；不重复新增，不同时改生成 README、workflow 或脚本。
@@ -120,8 +120,8 @@ Check actual bundle/plugin loading state in **DSH Plugins**, then open **Legion*
   "repository": "https://github.com/seanliii/dsh-plugin-legion",
   "category": "tools",
   "description": {
-    "en": "A five-page native DSH workbench for selecting Legion members, finding session tools and Skills, searching configured plugin markets and public GitHub, and explicitly installing or switching native capability bundles. Delegates source adaptation and collaboration to a separately configured, user-authorized Legion core; the core and external harnesses are not bundled.",
-    "zh": "DSH 原生五页工作台：选择军团成员、查找当前会话工具与 Skill、搜索已配置插件市场和公开 GitHub，明确安装或启停原生能力包；可委托另行配置并获授权的军团核心适配源码和协作，不捆绑核心或外部 Harness。"
+    "en": "A five-page native DSH workbench to choose Legion members, discover session tools and Skills, search configured plugin indexes and public GitHub, and explicitly install or enable native capability bundles. Includes connection settings, task details, and separate run, artifact and download status. Source adaptation and collaboration use a separately configured, user-authorized Legion core; no core, external harnesses, models or credentials are bundled.",
+    "zh": "DSH 原生五页军团工作台：选择成员、查找会话工具与 Skill、搜索已配置插件索引和公开 GitHub，并明确安装或启停原生能力包；提供连接配置、任务详情，分别呈现运行、成果和下载状态。源码适配与协作交给另行配置并获授权的军团核心，不捆绑核心、外部 Harness、模型或凭据。"
   },
   "added": "2026-10-28"
 }
@@ -129,7 +129,9 @@ Check actual bundle/plugin loading state in **DSH Plugins**, then open **Legion*
 
 不要额外添加 `source`、`npm`、SHA 或 `rights` 字段，`repository` 保持仓库根 URL。目录元数据贡献采用 **CC0-1.0**，该目录的代码贡献采用 MIT；这不重新许可外部插件。连接器的 MIT 声明也不是上游分发权保证。
 
-**本次投稿 [PR #748](https://github.com/imsai-sh/awesome-deepseek-harness-plugins/pull/748)**，提交 `d514169653bf3b74a7742ee1978d26bbdfecab09`。本地调用上游条目和差异验证器，结果为 `manual-review`；验证器未变，复用其 6 组共 **99 项通过**记录。GitHub 的 `static-review` 已成功，`merge` 为 **SKIPPED**；Codex Review 已完成且未报告发现。**截至 2026-10-29，PR 仍为 OPEN，需维护者手动审核，不是新版已收录。**
+**0.4.1 更新仍为 [PR #748](https://github.com/imsai-sh/awesome-deepseek-harness-plugins/pull/748)**，head 为 `4bd8cc6e5196de363149bff317a161833ad8f2db`，状态 **OPEN／MERGEABLE（未合入）**。本地基于可信上游 `50684e4cde55722da7c6d19cf771b7e412b44ae2` 调用条目与差异验证器，结果为 `manual-review`，只涉及上述一份 JSON，`git diff --check` 退出 0。该 head 的[工作流 40938539964](https://github.com/imsai-sh/awesome-deepseek-harness-plugins/actions/runs/40938539964)中，`static-review=SUCCESS`，完成于 **2026-10-29 19:16:28 UTC**；`merge=SKIPPED`。这是该提交的目录 CI，不是合并成功或产品验收；仍需维护者审核合并。
+
+**历史 0.4.0 投稿 [PR #748](https://github.com/imsai-sh/awesome-deepseek-harness-plugins/pull/748)**，提交 `d514169653bf3b74a7742ee1978d26bbdfecab09`。本地调用上游条目和差异验证器，结果为 `manual-review`；验证器未变，复用其 6 组共 **99 项通过**记录。GitHub 的 `static-review` 已成功，`merge` 为 **SKIPPED**；Codex Review 已完成且未报告发现。**截至 2026-10-29，PR 仍为 OPEN，需维护者手动审核，不是新版已收录。**
 
 目录仓库的 `npm run plugin:review` 对应 `scripts/review-plugin-submission.mjs`；完整审查还需要 PR/base/head 和 GitHub API 上下文，单独解析 JSON 不等于通过。非 draft、仅新增一条且通过静态检查的投稿可自动合并；本次是更新已有条目，不能走新增自动合并。首次 PR #740 的合并与本次更新分别记账。
 
