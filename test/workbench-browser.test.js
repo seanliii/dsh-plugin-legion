@@ -917,18 +917,29 @@ test('downloads reuse the native human command with an observed id, never a retu
   assert.equal(controller.getSnapshot().download, null, 'A late download receipt must not enter another session')
 })
 
-// In-process React element projection, not Playwright/a browser/native-install acceptance.
+// In-process projection, not browser acceptance. Keep React child slots/keys
+// and model the native disabled/removal focus loss observed on DSH 50935.
 async function statusPanel(t, status, { taskCount = 1, reducedMotion = false, membersError,
   locale = 'zh', readTask = true } = {}) {
   let definition, Page, cursor = 0
   const label = (zh, en) => locale === 'zh' ? zh : en
   const slots = [], cleanups = [], calls = [], effects = [], focusCalls = [], scrollCalls = []
-  const refTargets = new Map()
+  const shapes = new WeakMap(), targets = new WeakMap(), types = new Map(), refs = new Set()
+  const body = { tagName: 'BODY', isConnected: true }, document = { activeElement: body }
+  const hostKeys = []
+  let mounted = new Map()
+  const shapeOf = value => Array.isArray(value) ? value.map(shapeOf)
+    : value && typeof value === 'object' ? shapes.get(value) : null
   const React = {
     Fragment: Symbol('fragment'),
     createElement(type, props, ...children) {
-      const all = { ...props, children: children.flat(Infinity).filter(value => value != null && value !== false) }
-      return typeof type === 'function' ? type(all) : { type, props: all }
+      const { key, ...rest } = props || {}
+      const all = { ...rest, children: children.flat(Infinity).filter(value => value != null && value !== false) }
+      const node = typeof type === 'function' ? type(all) : { type, props: all }
+      if (node && typeof node === 'object') shapes.set(node, typeof type === 'function'
+        ? { type, key, rendered: shapes.get(node) }
+        : { type, key, node, children: children.map(shapeOf) })
+      return node
     },
     useSyncExternalStore(_subscribe, snapshot) { return snapshot() },
     useState(initial) {
@@ -994,17 +1005,42 @@ async function statusPanel(t, status, { taskCount = 1, reducedMotion = false, me
   const render = () => {
     cursor = 0
     const tree = Page()
-    // Model React's commit order: refs are attached before passive effects run.
-    for (const ref of refTargets.keys()) ref.current = null
-    for (const node of nodes(tree)) {
-      const ref = node.props.ref
-      if (!ref || typeof ref !== 'object') continue
-      if (!refTargets.has(ref)) refTargets.set(ref, {
-        focus(options) { focusCalls.push({ id: node.props.id, options: plain(options) }) },
-        scrollIntoView(options) { scrollCalls.push({ id: node.props.id, options: plain(options) }) },
-      })
-      ref.current = refTargets.get(ref)
+    const next = new Map()
+    for (const ref of refs) ref.current = null
+    const commit = (shape, path, parent) => {
+      if (!shape) return
+      if (Array.isArray(shape)) {
+        shape.forEach((child, index) => commit(child,
+          `${path}/${child?.key == null ? `i${index}` : `k${child.key}`}`, parent))
+        return
+      }
+      if (!types.has(shape.type)) types.set(shape.type, types.size)
+      path += `:t${types.get(shape.type)}`
+      if ('rendered' in shape) return commit(shape.rendered, `${path}/rendered`, parent)
+      const target = mounted.get(path) || {
+        tagName: typeof shape.type === 'string' ? shape.type.toUpperCase() : 'FRAGMENT',
+        focus(options = {}) {
+          if (!this.isConnected || this.disabled) return
+          document.activeElement = this
+          focusCalls.push({ id: this.element.props.id, options: plain(options) })
+        },
+        scrollIntoView(options) { scrollCalls.push({ id: this.element.props.id, options: plain(options) }) },
+      }
+      Object.assign(target, { element: shape.node, parent, isConnected: true, disabled: shape.node.props.disabled === true })
+      next.set(path, target)
+      targets.set(shape.node, target)
+      if (target.disabled && document.activeElement === target) document.activeElement = body
+      const ref = shape.node.props.ref
+      if (ref && typeof ref === 'object') { refs.add(ref); ref.current = target }
+      commit(shape.children, path, target)
     }
+    commit(shapes.get(tree), 'root', null)
+    for (const [path, target] of mounted) if (!next.has(path)) {
+      target.isConnected = false
+      if (document.activeElement === target) document.activeElement = body
+    }
+    mounted = next
+    // Refs and removal/disabled effects precede passive React effects.
     for (const effect of effects.splice(0)) effect()
     return tree
   }
@@ -1014,6 +1050,27 @@ async function statusPanel(t, status, { taskCount = 1, reducedMotion = false, me
     ? String(node) : node.props.children.map(text).join('')
   const find = (type, label) => nodes(render()).find(node => node.type === type
     && (node.props['aria-label'] === label || text(node) === label))
+  const fire = (target, type, extra = {}) => {
+    const event = { target, ...extra, defaultPrevented: false, propagationStopped: false,
+      preventDefault() { this.defaultPrevented = true },
+      stopPropagation() { this.propagationStopped = true } }
+    if (!target.isConnected || (type === 'Click' && target.disabled)) return event
+    for (let current = target; current; current = current.parent) {
+      event.currentTarget = current
+      current.element.props[`on${type}`]?.(event)
+      if (event.propagationStopped) break
+    }
+    if (type.startsWith('Key') && !event.propagationStopped) hostKeys.push({ type, key: event.key })
+    render()
+    return event
+  }
+  const press = (target, key, repeat = false) => {
+    const down = fire(target, 'KeyDown', { key, repeat })
+    if (!down.defaultPrevented && key === 'Enter') fire(target, 'Click')
+    const up = fire(target, 'KeyUp', { key, repeat })
+    if (!down.defaultPrevented && !up.defaultPrevented && key === ' ') fire(target, 'Click')
+    return { down, up }
+  }
   find('select', label('当前工作会话', 'Working session')).props.onChange({ target: { value: 'a' } })
   await turn()
   if (readTask) {
@@ -1022,7 +1079,166 @@ async function statusPanel(t, status, { taskCount = 1, reducedMotion = false, me
     find('button', label('读取实时进度', 'Read live progress')).props.onClick()
     await turn()
   }
-  return { render, nodes, text, find, calls, focusCalls, scrollCalls }
+  return { render, nodes, text, find, calls, focusCalls, scrollCalls, document, hostKeys, fire, press,
+    dom: node => targets.get(node),
+    userFocus(target) { assert.ok(target.isConnected && !target.disabled); document.activeElement = target } }
+}
+
+// Same metadata shape as the observed mixed inventory; no private IDs, files or HTTP.
+const legacyFileObservation = '文件存在、非空且内容哈希已计算'
+const savedFileObservation = '安全检查及导出字节哈希一致；非产品验收'
+const mixedArtifactRecords = () => [
+  artifactRow({ artifact_id: '1'.repeat(32), service_verification: legacyFileObservation }),
+  artifactRow({ artifact_id: '2'.repeat(32), name: 'fixture.html', sha256: 'd'.repeat(64),
+    service_verification: legacyFileObservation }),
+  artifactRow({ artifact_id: '3'.repeat(32), kind: 'text', export_snapshot_id: 'e'.repeat(64),
+    service_verification: savedFileObservation }),
+  artifactRow({ artifact_id: '4'.repeat(32), name: 'fixture.html', sha256: 'd'.repeat(64),
+    kind: 'web', export_snapshot_id: 'e'.repeat(64), service_verification: savedFileObservation }),
+]
+async function projectArtifactRecords(artifacts, after = 0) {
+  const result = await executeWorkbenchCommand({}, {
+    clean: value => value, redactText: value => value,
+    async status() {
+      return { task_ref: STATUS_REF, artifacts, runtime: { tasks: [] },
+        events: [], more_events: false, next_event_id: 68 }
+    },
+  }, {}, { agent: { id: 'a' }, attachments: [], signal: new AbortController().signal,
+    rawInput: JSON.stringify({ action: 'status', args: { task_ref: STATUS_REF, after_event_id: after } }) })
+  assert.equal(result.kind, 'success')
+  return JSON.parse(result.text).value
+}
+
+for (const example of [
+  { locale: 'zh', count: '本次已观察到的成果记录：4', saved: '已保存的交付版本',
+    legacy: '工作目录文件记录（可能随续作变化）', unknown: '来源未确认', download: '下载文件',
+    refresh: '刷新原任务', incomplete: '成果清单未完整取得', stale: /上次.*非最新|上次.*未更新/ },
+  { locale: 'en', count: 'Observed artifact records: 4', saved: 'Saved delivery version',
+    legacy: 'Working-directory file record (may change as work continues)', unknown: 'Source unconfirmed',
+    download: 'Download file', refresh: 'Refresh original task', incomplete: 'Artifact inventory is incomplete',
+    stale: /[Pp]revious.*not current|[Pp]revious.*not updated/ },
+]) {
+  test(`artifact provenance distinguishes mixed records without merging or changing downloads: ${example.locale}`, async t => {
+    const items = mixedArtifactRecords(), value = await projectArtifactRecords(items)
+    assert.deepEqual(value.artifacts, items, 'Use metadata retained by the actual public projection')
+    const panel = await statusPanel(t, value, { locale: example.locale })
+    const tree = panel.render(), content = panel.text(tree)
+    const observations = panel.nodes(tree).find(node => node.props.id === 'legion-task-status')
+    const articles = panel.nodes(observations).filter(node => node.type === 'article' && node.props.className === 'legion-task')
+    assert.equal(articles.length, 4, 'Same names and hashes do not merge distinct record IDs')
+    for (let index = 0; index < items.length; index++) {
+      const text = panel.text(articles[index]), item = items[index]
+      assert.ok(text.includes(index < 2 ? example.legacy : example.saved), text)
+      assert.ok(text.includes(item.artifact_id))
+      assert.ok(text.includes(item.service_verification), 'Retain the service observation without upgrading it to acceptance')
+      if (item.export_snapshot_id) {
+        assert.ok(text.includes(item.export_snapshot_id))
+        assert.ok(text.includes(item.kind))
+      }
+      panel.nodes(articles[index]).find(node => node.type === 'button' && panel.text(node) === example.download).props.onClick()
+      await turn()
+    }
+    assert.ok(content.includes(example.count), content)
+    assert.doesNotMatch(content, /正式导出记录：|Observed export records:/)
+    assert.deepEqual(panel.calls.filter(call => call.line.startsWith('/legion download ')).map(call => call.line),
+      items.map(item => `/legion download ${STATUS_REF} ${item.artifact_id}`))
+  })
+
+  test(`artifact narrow layout wraps intact SHA-256 in legacy and saved records: ${example.locale}`, async t => {
+    const items = mixedArtifactRecords()
+    const panel = await statusPanel(t, await projectArtifactRecords(items), { locale: example.locale })
+    const tree = panel.render()
+    const observations = panel.nodes(tree).find(node => node.props.id === 'legion-task-status')
+    const articles = panel.nodes(observations).filter(node => node.type === 'article' && node.props.className === 'legion-task')
+    assert.equal(articles.length, items.length)
+    for (let index = 0; index < items.length; index++) {
+      const article = articles[index], item = items[index]
+      const sha = panel.nodes(article).find(node => node.type === 'p' && panel.text(node).startsWith('SHA-256: '))
+      assert.ok(sha)
+      assert.equal(item.sha256.length, 64)
+      assert.equal(panel.text(sha), `SHA-256: ${item.sha256}`, 'Wrap the full hash without truncation or inserted characters')
+      assert.equal(panel.dom(sha).parent, panel.dom(article), 'The wrapping rule must cover the actual task paragraph')
+      if (item.export_snapshot_id) {
+        assert.ok(panel.nodes(article).some(node => node.type === 'code' && panel.text(node) === item.export_snapshot_id),
+          'Keep the already-wrapping saved version ID intact')
+      }
+    }
+    // The fixture has no pixel layout engine. Check the rendered base stylesheet:
+    // these rules apply at 390px too; document width alone cannot detect inner overflow.
+    const css = panel.text(panel.nodes(tree).find(node => node.type === 'style'))
+    const baseRules = [...css.split('@media')[0].matchAll(/([^{}]+)\{([^{}]*)\}/g)]
+    const declarations = selector => baseRules
+      .filter(([, selectors]) => selectors.split(',').some(value => value.trim() === selector))
+      .map(([, , body]) => body).join(';')
+    const wraps = /(?:^|;)\s*overflow-wrap\s*:\s*anywhere\s*(?:;|$)/
+    assert.match(declarations('.legion-panel code'), wraps, 'Version IDs retain their existing wrap rule')
+    assert.match(declarations('.legion-task p'), wraps,
+      'Unbroken SHA-256 text in task paragraphs needs wrapping, not only paragraphs in member cards')
+    assert.doesNotMatch(`${declarations('.legion-task')};${declarations('.legion-task p')}`,
+      /(?:^|;)\s*(?:overflow(?:-x)?\s*:\s*(?:hidden|clip)|white-space\s*:\s*nowrap|text-overflow\s*:\s*ellipsis)(?:;|$)/,
+      'Do not conceal long values or force horizontal scrolling instead of wrapping')
+  })
+
+  test(`artifact provenance keeps absent or unfamiliar source metadata unconfirmed and eligibility independent: ${example.locale}`, async t => {
+    const items = [
+      artifactRow(),
+      artifactRow({ artifact_id: '1'.repeat(32), kind: 'web' }),
+      artifactRow({ artifact_id: '2'.repeat(32), service_verification: 'synthetic observation, not a source marker' }),
+      artifactRow({ artifact_id: '3'.repeat(32), export_snapshot_id: '' }),
+      artifactRow({ artifact_id: '4'.repeat(32), export_snapshot_id: ' ', service_verification: legacyFileObservation }),
+      artifactRow({ artifact_id: '6'.repeat(32), kind: 'web', service_verification: savedFileObservation }),
+      artifactRow({ artifact_id: '5'.repeat(32), export_snapshot_id: 'f'.repeat(64),
+        download_eligible: false, download_reason: 'Artifact has conflicting SHA-256 hashes' }),
+    ]
+    const panel = await statusPanel(t, await projectArtifactRecords(items), { locale: example.locale })
+    const observations = panel.nodes(panel.render()).find(node => node.props.id === 'legion-task-status')
+    const articles = panel.nodes(observations).filter(node => node.type === 'article' && node.props.className === 'legion-task')
+    assert.equal(articles.length, items.length)
+    for (const article of articles.slice(0, -1)) {
+      const text = panel.text(article)
+      assert.ok(text.includes(example.unknown), text)
+      assert.ok(!text.includes(example.saved) && !text.includes(example.legacy))
+      assert.equal(panel.nodes(article).filter(node => node.type === 'button').length, 1,
+        'Source labels do not add a new download eligibility gate')
+    }
+    const saved = articles.at(-1)
+    assert.ok(panel.text(saved).includes(example.saved))
+    assert.match(panel.text(saved), /Artifact has conflicting SHA-256 hashes/)
+    assert.equal(panel.nodes(saved).filter(node => node.type === 'button').length, 0,
+      'A saved version ID must not relax an existing integrity refusal')
+  })
+
+  test(`artifact provenance preserves incomplete last-event-page facts through a failed refresh: ${example.locale}`, async t => {
+    const value = await projectArtifactRecords(mixedArtifactRecords(), 62)
+    const { artifactFacts } = await helpers()
+    assert.equal(value.more_events, false)
+    assert.equal(value.sections.artifacts.complete, false, 'A partial event history is not a complete inventory receipt')
+    assert.equal(artifactFacts(value).complete, false)
+    const pending = deferred()
+    let reads = 0
+    const panel = await statusPanel(t, () => ++reads === 2 ? pending.promise : value, { locale: example.locale })
+    assert.ok(panel.text(panel.render()).includes(example.incomplete))
+    panel.find('button', example.refresh).props.onClick()
+    await turn()
+    for (const failed of [false, true]) {
+      if (failed) { pending.reject(new Error('synthetic last-page refresh failure')); await turn() }
+      const tree = panel.render(), text = panel.text(tree)
+      assert.ok(text.includes(example.incomplete), 'Do not turn complete=false into an old-count label')
+      assert.match(text, example.stale)
+      assert.doesNotMatch(text, /本次已观察到的成果记录|上次读取的成果记录|(?:Previously observed|Observed) artifact records:/)
+      const buttons = panel.nodes(tree).filter(node => node.type === 'button' && panel.text(node) === example.download)
+      assert.equal(buttons.length, 4)
+      for (const button of buttons) {
+        assert.equal(button.props.disabled, true)
+        button.props.onClick()
+      }
+      await turn()
+      assert.equal(panel.calls.filter(call => call.line.startsWith('/legion download ')).length, 0)
+      if (failed) assert.ok(panel.nodes(tree).some(node =>
+        node.props.role === 'alert' && panel.text(node).includes('synthetic last-page refresh failure')))
+    }
+    assert.equal(value.sections.artifacts.complete, false)
+  })
 }
 
 test('task panel renders missing exports as incomplete, not zero, even for legacy projected receipts', async t => {
@@ -1201,7 +1417,7 @@ test('export section explicitly marks clipped reasons incomplete even when all o
     && panel.text(node) === '以上仅为本页已取得的导出观察，尚不是完整原因清单。'),
   'The export section itself must disclose incomplete reason content, not just the generic truncation banner')
   assert.ok(exportSection.some(node => panel.text(node).includes(reason)), 'Keep the observed reason text as received')
-  assert.match(panel.text(tree), /本次已观察到的正式导出记录：1/)
+  assert.match(panel.text(tree), /本次已观察到的成果记录：1/)
   assert.doesNotMatch(panel.text(tree), /成果清单未完整取得/,
     'Clipped export reasons must not change the independently complete artifact inventory')
 })
@@ -1229,5 +1445,382 @@ for (const example of [
     assert.doesNotMatch(panel.text(section), /安装，暂不启用|Install disabled/)
     assert.equal(panel.calls.some(call => call.line.includes('"action":"status"')), false,
       'This copy regression does not replay task progress or focus')
+  })
+}
+
+const focusStatus = (overrides = {}) => ({
+  task_ref: STATUS_REF, artifacts: [artifactRow()], more_events: true,
+  sections: {
+    artifacts: { available: true, complete: true, observed_count: 1, shown_count: 1, offset: 30, next_offset: 60 },
+    events: { after_event_id: 0, has_more: true, next_after_event_id: 9 },
+  },
+  ...overrides,
+})
+
+for (const [label, key] of [
+  ['刷新原任务', 'Enter'], ['返回成果第一页', ' '],
+  ['读取下一页成果记录', 'Enter'], ['读取后续事件', ' '],
+]) {
+  for (const failure of [false, true]) {
+    test(`task read focus keeps the same control through ${failure ? 'failure' : 'completion'}: ${label}`, async t => {
+      const pending = deferred()
+      let reads = 0
+      const panel = await statusPanel(t, () => ++reads === 2 ? pending.promise : focusStatus())
+      const original = panel.dom(panel.find('button', label))
+      panel.userFocus(original)
+      const focusCount = panel.focusCalls.length, scrollCount = panel.scrollCalls.length
+      panel.press(original, key)
+      await turn()
+      panel.render()
+      assert.equal(original.isConnected, true, 'Do not replace the triggering button')
+      assert.equal(panel.document.activeElement, original, 'Busy must not remove the focused button from the focus order')
+      assert.equal(original.disabled, false, 'Native disabled caused the real DSH focusout')
+      assert.equal(original.element.props['aria-disabled'], true)
+      assert.equal(panel.dom(panel.find('button', label)), original)
+      assert.equal(panel.find('button', '下载文件').props.disabled, true, 'Download remains natively disabled')
+      panel.press(original, key)
+      panel.fire(original, 'Click')
+      await turn()
+      assert.equal(reads, 2, 'Busy keyboard and pointer activation must not issue another status request')
+      if (failure) pending.reject(new Error('synthetic focus read rejected'))
+      else pending.resolve(focusStatus({ artifacts: [], more_events: false,
+        export_observations: [{ reason: 'Synthetic terminal page' }],
+        sections: { artifacts: { offset: 0 }, events: { after_event_id: 9, has_more: false } } }))
+      await turn()
+      panel.render()
+      assert.equal(panel.document.activeElement, original, 'Completion, failure or a final page must not strand focus on BODY')
+      assert.equal(panel.dom(panel.find('button', label)), original, 'Page size changes must preserve control identity')
+      assert.equal(original.isConnected, true)
+      assert.equal(original.element.props['aria-disabled'], !failure && label !== '刷新原任务')
+      assert.equal(panel.focusCalls.length, focusCount, 'Do not fix this by refocusing after completion')
+      assert.equal(panel.scrollCalls.length, scrollCount, 'Do not force a viewport position')
+      if (failure) {
+        assert.match(panel.text(panel.render()), /synthetic focus read rejected/)
+        assert.equal(panel.find('button', '下载文件').props.disabled, true)
+      }
+    })
+  }
+}
+
+test('task read focus owns Enter and Space activation but leaves navigation keys and user focus alone', async t => {
+  const pending = deferred()
+  let reads = 0
+  const panel = await statusPanel(t, () => ++reads === 2 ? pending.promise : focusStatus())
+  const button = panel.dom(panel.find('button', '刷新原任务'))
+  panel.userFocus(button)
+  const ready = panel.press(button, 'Enter')
+  assert.equal(ready.down.defaultPrevented, false, 'Use the native button click, not a second scripted activation')
+  assert.equal(ready.down.propagationStopped, true, 'Button activation must not also enter Host page shortcuts')
+  assert.equal(ready.up.propagationStopped, true)
+  for (const key of ['Enter', ' ']) {
+    const blocked = panel.press(button, key)
+    assert.equal(blocked.down.defaultPrevented, true)
+    assert.equal(blocked.up.defaultPrevented, true)
+  }
+  const tab = panel.fire(button, 'KeyDown', { key: 'Tab' })
+  assert.equal(tab.defaultPrevented, false)
+  assert.equal(tab.propagationStopped, false)
+  const elsewhere = panel.dom(panel.find('select', '当前工作会话'))
+  panel.userFocus(elsewhere)
+  pending.resolve(focusStatus())
+  await turn()
+  panel.render()
+  assert.equal(panel.document.activeElement, elsewhere, 'A completed read must respect an intervening focus move')
+  panel.userFocus(button)
+  const held = panel.press(button, 'Enter', true)
+  assert.equal(held.down.defaultPrevented, true, 'A held key must not retrigger immediately after the first request finishes')
+  await turn()
+  assert.equal(reads, 2)
+  assert.deepEqual(panel.hostKeys, [{ type: 'KeyDown', key: 'Tab' }])
+  panel.press(button, ' ')
+  await turn()
+  assert.equal(reads, 3, 'A fresh Space press still activates exactly once')
+})
+
+for (const preloaded of [false, true]) {
+  test(`task read reentry is blocked before invalidation, including old handlers and paging (preloaded: ${preloaded})`, async t => {
+    const { createController } = await helpers()
+    const pending = deferred(), duplicates = []
+    let reads = 0
+    const controller = createController(context(async () => {
+      reads++
+      return preloaded && reads === 1 ? reply('status', focusStatus()) : pending.promise
+    }))
+    t.after(() => controller.dispose())
+    controller.selectSession('a')
+    if (preloaded) await controller.taskStatus(STATUS_REF)
+    let reentered = false
+    const unsubscribe = controller.subscribe(() => {
+      if (reentered) return
+      reentered = true
+      duplicates.push(controller.taskStatus(STATUS_REF, { artifact_offset: 60 }))
+    })
+    const reading = controller.taskStatus(STATUS_REF)
+    duplicates.push(controller.taskStatus(STATUS_REF), controller.taskStatus(STATUS_REF, { after_event_id: 9 }))
+    await turn()
+    unsubscribe()
+    assert.equal(reads, preloaded ? 2 : 1, 'Duplicate reads must neither reset busy nor supersede the original result')
+    assert.equal(controller.getSnapshot().busy.taskStatus, true)
+    pending.resolve(reply('status', focusStatus()))
+    assert.equal(await reading, true)
+    assert.deepEqual(await Promise.all(duplicates), [false, false, false])
+    assert.equal(controller.getSnapshot().taskStatusStale, false)
+  })
+}
+
+test('task read reentry ownership is released on session or connection invalidation, not by an old settlement', async t => {
+  const { createController } = await helpers()
+  const requests = [deferred(), deferred(), deferred()]
+  let reads = 0
+  const controller = createController(context(async () => requests[reads++].promise))
+  t.after(() => controller.dispose())
+  controller.selectSession('a')
+  const original = controller.taskStatus(STATUS_REF)
+  await turn()
+  controller.selectSession('b')
+  controller.selectSession('a')
+  const replacement = controller.taskStatus(STATUS_REF)
+  await turn()
+  requests[0].reject(new Error('old session refusal'))
+  assert.equal(await original, false)
+  const duplicate = controller.taskStatus(STATUS_REF)
+  await turn()
+  assert.equal(reads, 2, 'Old finally must not release the new read owner')
+  assert.equal(await duplicate, false)
+  const detach = controller.attach('configuration', {})
+  detach()
+  const reconnected = controller.taskStatus(STATUS_REF)
+  await turn()
+  requests[1].resolve(reply('status', focusStatus()))
+  assert.equal(await replacement, false)
+  assert.equal(controller.getSnapshot().taskStatus, null)
+  requests[2].resolve(reply('status', focusStatus()))
+  assert.equal(await reconnected, true)
+  assert.equal(reads, 3)
+})
+
+for (const [kind, options] of [
+  ['refresh', {}],
+  ['artifact page', { artifact_offset: 30 }],
+  ['event page', { after_event_id: 9, after_message_id: 4 }],
+]) {
+  test(`task refresh retains the same task during ${kind} without allowing stale downloads`, async t => {
+    const { createController } = await helpers()
+    const pending = deferred(), calls = [], snapshots = []
+    const controller = createController(context(async (_id, line) => {
+      calls.push(line)
+      if (calls.length > 1) return pending.promise
+      return reply('status', { task_ref: STATUS_REF, artifacts: [artifactRow()], more_events: false })
+    }))
+    t.after(() => controller.dispose())
+    controller.selectSession('a')
+    await controller.taskStatus(STATUS_REF)
+    const original = controller.getSnapshot().taskStatus
+    controller.subscribe(() => snapshots.push(controller.getSnapshot()))
+    const reading = controller.taskStatus(STATUS_REF, options)
+    await turn()
+    assert.ok(snapshots.length > 0)
+    assert.ok(snapshots.every(state => state.taskStatus === original),
+      'A same-task read must never publish an empty result subtree, even transiently')
+    assert.ok(snapshots.every(state => state.taskStatusStale === true),
+      'Invalidate freshness atomically, before a subscriber can request a download')
+    assert.equal(controller.getSnapshot().busy.taskStatus, true)
+    assert.equal(await controller.downloadArtifact(STATUS_REF, ARTIFACT_ID), false)
+    assert.equal(calls.length, 2, 'The controller must reject a stale download even if the UI is bypassed')
+    assert.deepEqual(JSON.parse(calls[1].slice('/legion-panel '.length)).args, { task_ref: STATUS_REF, ...options })
+    pending.resolve(reply('status', { task_ref: STATUS_REF, artifacts: [], more_events: false }))
+    assert.equal(await reading, true)
+    assert.equal(controller.getSnapshot().taskStatusStale, false)
+    assert.equal(controller.getSnapshot().busy.taskStatus, false)
+    assert.deepEqual(plain(controller.getSnapshot().taskStatus.artifacts), [])
+  })
+}
+
+test('task refresh failure retains non-current observations, fences an old download and recovers only on success', async t => {
+  const { createController } = await helpers()
+  const pending = deferred(), download = deferred(), calls = []
+  let reads = 0
+  const controller = createController(context(async (_id, line) => {
+    calls.push(line)
+    if (line.startsWith('/legion download ')) return download.promise
+    if (++reads === 2) return pending.promise
+    return reply('status', { task_ref: STATUS_REF, artifacts: [artifactRow()], more_events: false })
+  }))
+  t.after(() => controller.dispose())
+  controller.selectSession('a')
+  await controller.taskStatus(STATUS_REF)
+  const original = controller.getSnapshot().taskStatus
+  const downloading = controller.downloadArtifact(STATUS_REF, ARTIFACT_ID)
+  await turn()
+  const reading = controller.taskStatus(STATUS_REF)
+  await turn()
+  download.resolve(nativeReply({ result: { kind: 'success', text: 'OLD_DOWNLOAD_RECEIPT' } }))
+  await downloading
+  pending.reject(new Error('synthetic refresh unavailable'))
+  assert.equal(await reading, false)
+  assert.equal(controller.getSnapshot().taskStatus, original)
+  assert.equal(controller.getSnapshot().taskStatusStale, true)
+  assert.equal(controller.getSnapshot().busy.taskStatus, false)
+  assert.match(controller.getSnapshot().errors.taskStatus, /synthetic refresh unavailable/)
+  assert.equal(controller.getSnapshot().download, null, 'A late earlier download must not look like a new success')
+  const before = calls.length
+  assert.equal(await controller.downloadArtifact(STATUS_REF, ARTIFACT_ID), false)
+  assert.equal(calls.length, before, 'An error must not re-enable a retained artifact')
+  assert.equal(await controller.taskStatus(STATUS_REF), true)
+  assert.equal(controller.getSnapshot().taskStatusStale, false)
+  assert.equal(controller.getSnapshot().errors.taskStatus, null)
+  assert.equal(await controller.downloadArtifact(STATUS_REF, ARTIFACT_ID), true)
+})
+
+for (const failLate of [false, true]) {
+  test(`task refresh clears another task and ignores the superseded ${failLate ? 'error' : 'success'}`, async t => {
+    const { createController } = await helpers()
+    const pending = deferred(), replacement = deferred()
+    let reads = 0
+    const other = 'd'.repeat(32)
+    const controller = createController(context(async () => {
+      if (++reads === 1) return reply('status', { task_ref: STATUS_REF, artifacts: [artifactRow()] })
+      return reads === 2 ? pending.promise : replacement.promise
+    }))
+    t.after(() => controller.dispose())
+    controller.selectSession('a')
+    await controller.taskStatus(STATUS_REF)
+    const oldRead = controller.taskStatus(STATUS_REF)
+    await turn()
+    const newRead = controller.taskStatus(other)
+    assert.equal(controller.getSnapshot().taskStatus, null, 'Do not retain a different task as placeholder content')
+    assert.equal(controller.getSnapshot().download, null)
+    await turn()
+    replacement.resolve(reply('status', { task_ref: other, artifacts: [] }))
+    await newRead
+    if (failLate) pending.reject(new Error('old task error'))
+    else pending.resolve(reply('status', { task_ref: STATUS_REF, artifacts: [artifactRow()] }))
+    assert.equal(await oldRead, false)
+    assert.equal(controller.getSnapshot().taskStatus.task_ref, other)
+    assert.equal(controller.getSnapshot().errors.taskStatus, null)
+    assert.equal(controller.getSnapshot().taskStatusStale, false)
+  })
+}
+
+for (const failLate of [false, true]) {
+  test(`task refresh cannot restore a cached session after switching away and back (${failLate ? 'error' : 'success'})`, async t => {
+    const { createController } = await helpers()
+    const pending = deferred()
+    let reads = 0
+    const controller = createController(context(async () => {
+      if (++reads === 2) return pending.promise
+      return reply('status', { task_ref: STATUS_REF, artifacts: [artifactRow()] })
+    }))
+    t.after(() => controller.dispose())
+    controller.selectSession('a')
+    await controller.taskStatus(STATUS_REF)
+    const reading = controller.taskStatus(STATUS_REF)
+    await turn()
+    controller.selectSession('b')
+    assert.equal(controller.getSnapshot().taskStatus, null)
+    assert.equal(controller.getSnapshot().download, null)
+    controller.selectSession('a')
+    if (failLate) pending.reject(new Error('old session error'))
+    else pending.resolve(reply('status', { task_ref: STATUS_REF, artifacts: [artifactRow()] }))
+    assert.equal(await reading, false)
+    assert.equal(controller.getSnapshot().taskStatus, null)
+    assert.equal(controller.getSnapshot().taskStatusStale, false)
+    assert.equal(controller.getSnapshot().errors.taskStatus, null)
+  })
+}
+
+for (const changed of ['baseUrl', 'tokenEnv', 'tokenFile', 'entryId', 'detach']) {
+  test(`task refresh drops retained results and late replies when native connection ${changed} changes`, async t => {
+    const { createController } = await helpers()
+    const fixture = mappedConfiguration(), pending = deferred()
+    let configuration = { status: 'ready', writable: true, revision: 7,
+      value: { baseUrl: 'https://old.example.invalid', tokenEnv: 'OLD_TOKEN', tokenFile: '/synthetic/old-token' } }
+    let changedForm, reads = 0
+    fixture.form.getSnapshot = () => configuration
+    fixture.form.subscribe = listener => { changedForm = listener; return () => {} }
+    const controller = createController(context(async () => {
+      if (++reads === 2) return pending.promise
+      return reply('status', { task_ref: STATUS_REF, artifacts: [artifactRow()] })
+    }))
+    t.after(() => controller.dispose())
+    const detach = controller.attach('configuration', fixture.owner)
+    await controller.loadConfig()
+    controller.selectSession('a')
+    await controller.taskStatus(STATUS_REF)
+    const reading = controller.taskStatus(STATUS_REF)
+    await turn()
+    if (changed === 'detach') detach()
+    else if (changed === 'entryId') {
+      fixture.identity.entryId = 'replacement-loader:legion'
+      await controller.loadConfig()
+    } else {
+      configuration = { ...configuration, revision: 8, value: { ...configuration.value, [changed]: `new-${changed}` } }
+      changedForm()
+    }
+    assert.equal(controller.getSnapshot().taskStatus, null, 'An observed connection change is not a same-identity refresh')
+    assert.equal(controller.getSnapshot().download, null)
+    pending.resolve(reply('status', { task_ref: STATUS_REF, artifacts: [artifactRow()] }))
+    assert.equal(await reading, false)
+    assert.equal(controller.getSnapshot().taskStatus, null)
+    assert.equal(await controller.downloadArtifact(STATUS_REF, ARTIFACT_ID), false)
+    assert.equal(reads, 2, 'Changing configuration must not automatically execute or download anything')
+  })
+}
+
+for (const example of [
+  { locale: 'zh', label: '刷新原任务', args: {}, busy: /正在读取/, stale: /上次.*非最新|上次.*未更新/ },
+  { locale: 'zh', label: '读取下一页成果记录', args: { after_event_id: 0, artifact_offset: 30 },
+    busy: /正在读取/, stale: /上次.*非最新|上次.*未更新/ },
+  { locale: 'zh', label: '读取后续事件', args: { after_event_id: 9 }, busy: /正在读取/, stale: /上次.*非最新|上次.*未更新/ },
+  { locale: 'en', label: 'Refresh original task', args: {}, busy: /Reading/, stale: /[Pp]revious.*not current|[Pp]revious.*not updated/ },
+]) {
+  test(`task refresh view stays mounted and honestly disables downloads through failure: ${example.locale} ${example.label}`, async t => {
+    const pending = deferred()
+    let reads = 0
+    const value = { task_ref: STATUS_REF, artifacts: [artifactRow()], more_events: false,
+      runtime: { tasks: [{ task_id: 'author', status: 'done', final: 'RETAINED_OBSERVATION' }] },
+      sections: {
+        artifacts: { available: true, complete: true, observed_count: 1, shown_count: 1, offset: 0, next_offset: 30 },
+        events: { after_event_id: 0, has_more: true, next_after_event_id: 9 },
+      } }
+    const panel = await statusPanel(t, () => ++reads === 2 ? pending.promise : value, {
+      taskCount: 8, locale: example.locale,
+    })
+    panel.render()
+    const focusCount = panel.focusCalls.length, scrollCount = panel.scrollCalls.length
+    const downloadLabel = example.locale === 'zh' ? '下载文件' : 'Download file'
+    panel.find('button', example.label).props.onClick()
+    await turn()
+    let tree = panel.render(), text = panel.text(tree)
+    assert.match(text, /RETAINED_OBSERVATION/, 'The old runtime/artifact subtree must not collapse during loading')
+    assert.match(text, example.busy)
+    assert.match(text, example.stale)
+    assert.equal(panel.nodes(tree).find(node => node.props.id === 'legion-task-status').props['aria-busy'], true)
+    assert.equal(panel.find('button', downloadLabel).props.disabled, true)
+    panel.find('button', downloadLabel).props.onClick()
+    await turn()
+    assert.equal(panel.calls.filter(call => call.line.startsWith('/legion download ')).length, 0)
+    const request = panel.calls.filter(call => call.line.includes('"action":"status"')).at(-1)
+    assert.deepEqual(JSON.parse(request.line.slice('/legion-panel '.length)).args, { task_ref: STATUS_REF, ...example.args })
+    pending.reject(new Error('synthetic latest-read failed'))
+    await turn()
+    tree = panel.render()
+    text = panel.text(tree)
+    assert.match(text, /RETAINED_OBSERVATION/)
+    assert.match(text, example.stale)
+    assert.ok(panel.nodes(tree).some(node => node.props.role === 'alert' && panel.text(node).includes('synthetic latest-read failed')))
+    assert.equal(panel.nodes(tree).find(node => node.props.id === 'legion-task-status').props['aria-busy'], false)
+    assert.equal(panel.find('button', downloadLabel).props.disabled, true, 'Failure must not turn the retained export into a fresh result')
+    assert.doesNotMatch(text, /本次已观察到的成果记录|可请求下载；|Download may be requested;/)
+    panel.find('button', downloadLabel).props.onClick()
+    await turn()
+    assert.equal(panel.calls.filter(call => call.line.startsWith('/legion download ')).length, 0)
+    panel.find('button', example.label).props.onClick()
+    await turn()
+    tree = panel.render()
+    assert.doesNotMatch(panel.text(tree), example.stale)
+    assert.equal(panel.find('button', downloadLabel).props.disabled, false)
+    assert.equal(panel.focusCalls.length, focusCount, 'Refresh and paging must not steal focus')
+    assert.equal(panel.scrollCalls.length, scrollCount, 'No synthetic scroll restoration is added')
   })
 }

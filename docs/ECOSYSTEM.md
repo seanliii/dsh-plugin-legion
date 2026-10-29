@@ -2,9 +2,9 @@
 
 **定位：DSH 里的超级协作层。** 一个入口，既能利用 DSH 原有插件，也能寻找和适配开源能力，还能把任务交给独立军团核心。DSH 不需要变成另一个产品，军团也不应该被缩成一个只会转发文字的壳。
 
-本地目标版 `dsh-plugin-legion` **0.4.0** 在发现、读源、包装、真实成员查询、任务协作和文件下载之外，加入 DSH 原生侧栏五页工作台。**主线程已报告原生安装与启用成功，浏览器仍在排查配置入口接线，完整工作台 UI 验收尚未完成。** 公开 push／tag 与从公开版本安装仍待核验；公开版本只引用[状态表里的上次核验快照](PLAN.md)。研究、编排、原生协作、记忆恢复和交付的实际程序在[独立军团核心](CORE.md)，不是写在这篇介绍里就算实现。
+本页介绍 `dsh-plugin-legion` **0.4.1**：在 DSH 原生侧栏五页工作台中发现能力、读源、包装、查询真实成员、协作和下载文件。安装使用固定标签 [v0.4.1](MARKET.md#v041)；封包时的源码回归、限定实操与发布后固定提交的新装分别记在[版本记录](PLAN.md#v041)。[0.4.0 历史公开与验收](PLAN.md#v040)仍按原日期、版本与 hash 归属，不作为 0.4.1 的完整 UI 或公开安装证明。研究、编排、原生协作、记忆恢复和交付的实际程序在[独立军团核心](CORE.md)，不是写在这篇介绍里就算实现。
 
-**0.4.0 is the local target, not a completed release.** The integration thread reports successful native installation and enabling. Configuration-entry wiring is still being investigated in the browser; full workbench UI acceptance, public push/tag and installation from the published revision remain pending. That installation result does not establish that every page works or expand the separate core's licensing boundary.
+**This page describes connector 0.4.1 and its fixed-tag [installation route](MARKET.md#v041).** Packaging-time checks and the later anonymous installation of the exact public commit have [separate records](PLAN.md#v041); this version does not predeclare that public-installation check successful. Historical records retain their original dates, versions and hashes; neither those records nor the scoped checks establish full workbench UI coverage or expand the separate core's licensing boundary.
 
 ## 先回答最容易混淆的三个问题
 
@@ -27,7 +27,7 @@ After enabling the connector in DSH Plugins, open **Legion** in the sidebar and 
 | **我的军团 / My Legion** | **刷新成员 / Refresh members** 看核心观察；勾选可选执行成员后 **保存选择 / Save selection**。**交给军团选人 / Let Legion choose** 清空候选草稿，仍需保存。Writes the profile's `candidateHarnesses` preference, not an installation or permission grant. Empty candidates let Legion choose; unknown installation/connection/verification states remain unknown. |
 | **找能力 / Discover** | 查 **本会话工具 / Skill**、**GitHub**、**DSH 插件市场**。Search current session tools/Skills, public GitHub or configured DSH market indexes. No Legion core or token is required; discovery does not execute tools. |
 | **添加能力 / Add capabilities** | **安装现成 DSH 包 / Install an existing DSH bundle** 与 **交给军团接入 / Delegate integration** 分开。Install a reviewed bundle through the official manager, or send an editable goal to the configured core/models. Reading a repository does not install or submit it. |
-| **接入任务 / Integration tasks** | **刷新任务列表 / Refresh tasks** 读本地恢复索引；**读取实时进度 / Read live progress** 才向核心查状态。The list is scoped to the selected session and authenticated identity, not a live feed. Download, continuation, feedback and cancellation still use `/legion` in the original conversation. |
+| **接入任务 / Integration tasks** | **刷新任务列表 / Refresh tasks** 读本地恢复索引；**读取实时进度 / Read live progress** 才向核心查状态。The list is scoped to the selected session and authenticated identity, not a live feed. Formal downloads reuse `/legion download` and save on the DSH Host, not automatically in the browser's Downloads folder. Continuation, feedback and cancellation use `/legion` in the original conversation. |
 | **连接与配置 / Connection** | 修改地址、环境变量名或令牌文件路径，点 **保存连接配置 / Save connection**。Native configuration saves reload the connector and end local waits, not remote tasks. The page never reads or shows token-file contents. |
 
 成员选择与连接配置、整包与子插件开关都作用于当前 **DSH profile**，不是仅影响所选会话。配置保存使用原生 revision；只读或冲突时重新读取，不强行覆盖。保存成功只说明配置被接受，不说明模型已能工作。
@@ -44,9 +44,9 @@ Local discovery reads metadata, not tools: up to 30 visible tools in the first p
 
 ### 安装和委托的两个按钮 / Installation and delegation
 
-已有包：填包名、Git 来源或本地包 → **检查来源 / Inspect source** → 核对代码和依赖 → 明确点 **安装，暂不启用 / Install disabled**。工作台通过官方 `remote.pluginManager.inspect`／`installBundle` 操作；检查 `accepted` 只说明格式或元数据，不是可信认证。依赖构建批准仍在 DSH 原生插件页处理。
+已有包：填包名、Git 来源或本地包 → **检查来源 / Inspect source** → 核对代码和依赖 → 明确点 **安装 / 更新（Install / update）**。工作台通过官方 `remote.pluginManager.inspect`／`installBundle` 操作，安装请求使用 `enabled:false`：新包不会自动选择启用；更新保留已有开关，已启用包可能继续运行。**若不希望更新后的代码运行，请先停用对应能力包，再安装更新。** 检查 `accepted` 只说明格式或元数据，不是可信认证。依赖构建批准独立于启用开关，仍在 DSH 原生插件页处理 `pendingBuilds`；停用并不禁止依赖构建。
 
-An existing bundle follows **Inspect source → review → Install disabled**, using the official `remote.pluginManager`, not a second installer. An accepted source is not a safety endorsement. Disabled does not prohibit dependency builds; handle `pendingBuilds` in DSH Plugins.
+An existing bundle follows **Inspect source → review → Install / update**, using the official `remote.pluginManager`, not a second installer. The request uses `enabled:false`: a new bundle is not automatically selected for activation, while an update preserves existing switches and an enabled bundle may keep running. **Disable the corresponding bundle before updating if you do not want the updated code to run.** An accepted source is not a safety endorsement. Dependency-build approval is separate from activation: disabled does not prohibit dependency builds; handle `pendingBuilds` in DSH Plugins.
 
 安装后可在 **已安装的 DSH 能力包 / Installed DSH capability bundles** 中开关整包，展开 **查看子插件与加载状态 / Individual plugins and loading state** 后开关已有运行条目。界面使用真实包名／`entryId`，尊重只读状态；不允许在自己的工作台停用 Legion 连接器，需去 DSH 原生插件页。`applied`、`restart-required`、`overridden`、`failed`、`cancelled` 分别展示，不能把“已选启用”当“已实际调用”。
 
@@ -78,7 +78,7 @@ Enter only a Host-local absolute path in `tokenFile`, or a variable name in `tok
 
 “拆成插件”也不是每个源码文件变成一个工具。应该按用户能独立使用的能力拆分，避免几十个内部函数把工具菜单塞满。是否适合复用、拆多少、如何验证，由当前需求和执行者决定，不由连接器写死一套流程。
 
-互学依靠可读取源码和真实经验，例如 `delivery_knowledge.py` 提供的案例索引；`capstack_bridge.py` 则是共享工具调用桥，只把随包已声明、可调用且依赖就绪的工具接给成员，不是学习引擎，也不会把保留源码自动变成工具。
+互学依靠可读取源码和真实经验，例如 `delivery_knowledge.py` 提供的案例索引；`capstack_bridge.py` 则是共享工具调用桥，只把随包已声明、可调用且依赖就绪的工具接给成员，不是学习引擎，也不会把保留源码自动变成工具。记录、召回、文本注入和模型实际采用分别看证据，`pending_review` 不算已验证成功。
 
 ## 保留的产品思想
 
@@ -97,9 +97,10 @@ Enter only a Host-local absolute path in `tokenFile`, or a variable name in `tok
 
 以下边界需要分清：
 
-- 普通任务续作不等于旧验收中心后台自动修复。个人 Responses 模式的旧修复调用缺少上游应传入的可信 `user_id`／`conversation_id` 时，返回 `planner_identity_required`，不借服务所有者身份或回退默认 `cc`；`actor` 不能代替身份。
+- 普通任务续作不等于旧验收中心后台自动修复。历史包记录中，个人 Responses 模式的旧修复调用缺少上游应传入的可信 `user_id`／`conversation_id` 时，返回 `planner_identity_required`，不借服务所有者身份或回退默认 `cc`；`actor` 不能代替身份。首次／续作成果出口的回执也不替代这条后台修复链的身份与运行验证。
 - [随包自检](CORE.md#随包自检的范围)只覆盖随包关键回归，应随包测试缺失仍失败；大仓历史缺失／未验证项明确保留为 `not_included`／`not_verified`，不算绿。包校验、解包或自检通过都不是全成员就绪证明。
-- 后续已在新目录安装固定私有核心，经 DSH 原生入口完成一件互动网页的真实派单、正式下载、原任务续作、图片反馈返工和重启恢复；正式下载字节通过手机与桌面浏览器操作验收。详见[实际验收范围](PLAN.md#真实作品验收到哪里)。这是单成员窄链路，截图反馈来自监督者，不能据此宣布“全生态已可用”或“完全无人自治”。
+- 历史互动网页验收中，已在新目录安装固定私有核心，经 DSH 原生入口完成一件互动网页的真实派单、正式下载、原任务续作、图片反馈返工和重启恢复；正式下载字节通过手机与桌面浏览器操作验收。详见[实际验收范围](PLAN.md#真实作品验收到哪里)。这是单成员窄链路，截图反馈来自监督者，不是后续版本的重跑，不能据此宣布“全生态已可用”或“完全无人自治”。
+- 私有核心 548d148 的首次默认成果、同 checkpoint 续作和新旧正式下载另有[独立记录](PLAN.md#core-548d148)。它证明的是该实例、成员与作品的出口和恢复链路，不是核心已经公开、全家实跑或普遍超过顶尖单家。
 
 ## 从需求到可用能力
 

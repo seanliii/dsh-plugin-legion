@@ -1,30 +1,113 @@
 # 发布与验收状态
 
-**更新日期：2026-10-29（Asia/Shanghai）。** 本页区分 **0.4.0** 原生工作台的已存验收、固定版本公开发布记录、0.2.0／0.3.0 历史证据和当前私有核心。目录收录、安装、真实调用和完整作品不是同一件事；更新说明的时间不算重新验收。
+本页先列 **0.4.1 封包时的验证记录**，再保留 **2026-10-28 至 2026-10-29（Asia/Shanghai）** 的既有验收与发布记录。目录收录、安装、真实调用和完整作品不是同一件事；更新说明的时间不算重新验收。
 
 目标是：DSH 用户入口 → 可独立安装的军团核心 → 按需安装的成员、工具、媒体和设备。不是只提供一篇理念介绍，也不是把整个公司大仓上传。
 
+<a id="current-release"></a>
+<a id="v041"></a>
+
+<a id="当前候选041-与新私有核心"></a>
+
+## 0.4.1 封包时的验证记录
+
+| 对象 | 封包时已存证据 | 发布后须独立核对／保留边界 |
+|---|---|---|
+| 连接器 0.4.1 | 源码快照的串行回归 **568 项通过**，语法检查退出 0；已有配置更换后丢弃迟到响应、恢复配置后正式下载及 390 宽布局等限定浏览器记录。安装目标为固定标签 [v0.4.1](MARKET.md#v041)。 | 最终程序提交 R、TGZ 身份、固定标签的实际公开，以及匿名按 R 的完整 SHA 全新安装的字节核对；封包记录不预先宣称这些后续步骤已通过。 |
+| 私有核心 548d148 | 固定包校验、原实例保留、首次及同 checkpoint 续作的默认正式出口与下载读回已有回执；随包关键回归 **170 项通过**。 | 始终为 `private-local-only`；这些事实不覆盖全仓、全成员、所有设备、无人自治或普遍性能优势。 |
+
+普通续作、显式发布、旧成果重新下载与首次默认出口是不同事实，不能互相替代。源码回归、已安装候选的实操和最终发行包也分别记账。
+
+**版本记录策略：** 最终程序提交 **R** 与固定标签 **`v0.4.1` 原子公开**；随后匿名按 **R 的完整 40 位 SHA** 全新安装并读回，再用独立的纯文档 **B 提交**补充实际结果。标签永不移动，B 不改 R 字节，封包文档不自引用尚未生成的 R SHA。封包时没有该公开新装成功回执；发布后结果见[仓库 main 的本节](https://github.com/seanliii/dsh-plugin-legion/blob/main/docs/PLAN.md#v041)与 [Release](https://github.com/seanliii/dsh-plugin-legion/releases)。
+
+### 0.4.1 程序与原生工作台：已存证据
+
+| 私有记录 | 实际事实 | 范围与限制 |
+|---|---|---|
+| `closeout-20261030/program-verification/verification.json` | Node **24.20.0** 下串行 `node --test --test-concurrency=1`：**568 passed，0 fail／skip／cancel**，退出 0；`npm run check --ignore-scripts` 退出 0。回执的 44 个源码、清单与测试文件 hash 在执行前后不变。 | 这是该源码快照的绿测，不是最终 TGZ 或公开安装回执；回执中的 `commit_before` 只是执行前仓库 HEAD，不代替未提交改动的源码 hash 或最终发行 SHA。 |
+| 旧 `program-verification-final/verification.json` 与 `all-tests.log` | **566 项中 565 通过、1 失败**，退出 1，`passed=false`；原失败是版本期望 `0.4.0` 与实际 `0.4.1` 不符。 | 目录名含 `final` 也不是绿测。失败批次保留，不改成 568 项通过，不与新批次相加。 |
+| `browser-refresh-keyboard.json`、`browser-pagination-failure.json`、`browser-terminal-pagers-and-failure.json` | 在真实已安装 DSH 页面中，Enter／Space 刷新保留按钮和焦点，用户主动 Tab 离开后不抢回焦点；读取最后一页保留焦点，终页控件的键盘操作未再发请求。 | 使用明确的 CDP 人工延迟，不伪造服务回包；只覆盖记录中的刷新与分页操作，不等于全部控件或全部键盘路径通过。 |
+| `browser-terminal-pagers-and-failure.json`、`browser-network-recovery.json` | 人工阻断原生命令请求后保留任务、显示失败与旧数据提示并禁用下载；解除阻断后刷新恢复当前状态和下载入口。 | 是浏览器真实请求的失败恢复检查，不是所有断网、服务异常或安装副作用的恢复证明。 |
+| `browser-session-task-late-results.json` | 刷新等待时切换工作会话、返回后打开另一任务、切走又切回的三条记录均未让旧结果或下载回执重新出现。 | 这是工作会话／任务切换；连接配置更换另有下列独立回执，不把旧候选实操归为最终 TGZ 已安装验收。 |
+| `closeout-20261030/browser-current-390-observation.json` | 视口 **390×844**，文档与 body 宽度均为 **390**；所测长 SHA-256 字段的可见宽度与滚动宽度相同，没有横向溢出。 | 只覆盖该已安装候选的所示任务／成果页面，不代表全部控件、设备或最终发行包；截图复看事实另列如下。 |
+| `closeout-20261030/browser-config-change-attempt1.json` | 首轮跨 CDP 工具轮后 `Fetch` domain 未启用，迟到响应检查记为 `delayed-response-test-inconclusive`；原失败回执保留。 | 这是测试工具现场未完成有效检查，不是产品缺陷或通过证明；与后续单轮真实响应检查分开。 |
+| `closeout-20261030/browser-config-change-late-response.json`、`browser-config-change-restoration.json` | 在**同一浏览器工具轮**暂停一次真实 **HTTP 200** 响应，不替换正文，放行前后响应 hash 未变；原生界面更换配置后旧详情清空，放行并收到 `loadingFinished` 后仍未回填。随后恢复原配置，revision 为 **21**，`matchesBaseline=true`。 | 证明这次配置更换对迟到状态回包的隔离及配置恢复；不扩大为所有竞态、安装恢复或最终公开 SHA 新装已通过。 |
+| `closeout-20261030/browser-restored-config-download.json`、`screenshots-and-restored-download-review.json` | 恢复配置后，在原生 UI 重新读到原任务并点击**已保存交付版本**的下载按钮；退出后读回主机文件为 **14,271 字节**，SHA-256 为 `392246fd76e581b93eec524ed1886c609f731de033baffbc259c10764e35d766`，与 UI 和正式 HTML 版本一致。 | 证明本次配置恢复后的实际读取、下载与字节一致；是同一正式成果的再次下载，不另计新作品，不代替公开 SHA 新装。 |
+
+390 宽回执记录的已安装 `client/index.js` SHA-256 为 `8c7c746a1cd73649f3f1f22159552415a57392dfd692d003436bb89b7981ead1`；这是文件 hash，不是最终公开 Git SHA 或 TGZ 身份。此前的窄屏与配置截图复看另有 `closeout-20261030/screenshots-and-restored-download-review.json`：主线程本轮亲看 **4 张既有截图**，覆盖迟到详情被丢弃、恢复后保存版本下载及两张 390 宽页面；中段截图只证明所示区域。该回执另含退出后下载字节读回，`previous_receipts_modified=false`；窄屏原回执的 `screenshotsReviewed:false` 不回写成 `true`。
+
+上述记录均保留原命令、时间、截图或源码归属；本轮文档更新只读取证据，没有重跑测试、浏览器或模型。配置更换、恢复下载与上述窄屏检查属于封包前的限定验收；发布后的公开 SHA 新装按上面的 R／B 策略独立记账，不能写成“全部浏览器范围已覆盖”。
+
+<a id="current-private-core"></a>
+<a id="core-548d148"></a>
+
+### 私有核心 548d148：首次默认出口与续作
+
+当前固定私有核心提交为 **`548d14893ca62e776f60c50761cabac4e19585ba`**，**606 个文件**，包 SHA-256 为 **`65177da56baf8423444cc88602c194563f017d0df55c01d038739e89a60df7a9`**。`core-548d148-final/build.json` 与 `verify.json` 对应同一提交和文件数。分发仍为 **`private-local-only`**，`public_license_granted=false`、`member_execution_verified=false`，没有公共核心下载发行。
+
+| 范围 | 实际事实 | 不能扩大成的结论 |
+|---|---|---|
+| 原实例升级 | `upgrade-preservation.json` 记录私有配置、工程、团队、任务记忆、成果、原生 checkpoint、会话、原工作文件与正式下载 **9 类现场**保留，包文件 hash 无差异。 | 不是重建一个空实例来代替恢复，也不证明全部成员重启后的运行能力。 |
+| 两条权限反例 | `independent-first-export-authority-final-review-548d148.json` 对 FE-F1／FE-F2 原反例独立重放 **2 passed**：已结束任务的目录被替换后不借旧结果重新授权，运行时选定的导出授权被撤回后不降级借用另一来源。 | 真实 Handler／导出器配合原生执行替身的定向检查，不是完整安全审计，也不是模型或真实服务实跑；与下列实例证据分别记账。 |
+| 首次默认正式出口 | `first-default-baseline.json` 与 `first-default-download-readback.json` 记录任务 `done`、`resumed_native=false`、正式导出 **2 个文件**；该轮没有追加手动发布指令。两个文件经 DSH 正式命令下载，字节数与 hash 对应。 | 证明该实例和成员的一次默认出口，不由 `done` 单独推出成功，也不保证任意任务自动形成合格作品。 |
+| 同 checkpoint 续作 | `first-default-revision-readback.json` 中 `resumed_native`、同原生 checkpoint、同模型／提供方绑定与同工作目录均为 `true`；新版 HTML 改变，新旧两版都能正式下载，旧快照字节未变。 | 模型／提供方是回执中的配置与调用身份，不是远端权重认证；相同 README 与历史下载不能重复计成多件新作品。 |
+| 作品操作与截图 | 初版 `first-default-browser-02.json` 和续作 `first-default-revision-browser.json` 分别记录选择、Enter／Space、刷新保留、重置及手机／桌面检查；续作另查当前步骤按钮转移焦点与标题不再单字落行。 | 是正式下载字节的 HTTP 浏览器旅程，不是 `file://` 验收、全部军团产品体验或真实用户价值证明。 |
+| 随包自检 | `private-package-selfcheck-v2.json` 与 `private-package-selfcheck-v2-execution.json`：**170 passed**，退出 0，非缓存，三个必需测试文件均存在；没有修改运行实例依赖。 | 仅 `private-core-regressions`；历史测试 **15 项未随包、16 项未验证**，真实成员仍为 `not_verified`。`private-core` 是自检模式，不改变分发许可。 |
+
+首次快照为 `10b57d0532aeaf4e61c3dc1cccb009fb4e8ba6136677c0539e8180847e3634ff`，续作快照为 `2633fa961b7dccd00c55f249769e21342bd18ee27cc5fe302740505d729448b6`。正式文件与下载读回分别为：
+
+| 文件 | 首次字节／SHA-256 | 续作字节／SHA-256 |
+|---|---|---|
+| HTML | **14,077** / `a8205cf45b90a9de2fe8433c12675433fc528bbc6cf88da6e9fadcb595127d07` | **14,271** / `392246fd76e581b93eec524ed1886c609f731de033baffbc259c10764e35d766` |
+| README | **1,913** / `97c65f952bbdc8986f4706f3dfec9ad943a89a35455ac0f8d707cc7a9b7923e6` | **1,913** / `97c65f952bbdc8986f4706f3dfec9ad943a89a35455ac0f8d707cc7a9b7923e6`（未变） |
+
+初次截图复看另存 `first-default-screenshot-review-03.json`。主线程随后重新亲看新版的三张既有截图，另存 `closeout-20261030/screenshots-personal-review.json`，明确 `fresh_browser_run=false`、未改旧回执；原 `first-default-browser-02.json` 与 `first-default-revision-browser.json` 的 **`screenshotsReviewed:false` 原样保留**。复看确认页面可读，标题断行仍略生硬，不称视觉精品或新的整套浏览器重跑。
+
+旧 `private-package-selfcheck.json` 的失败也保留：首次所用运行实例虚拟环境没有 pytest，没有执行测试；v2 改用已有、带 pytest 的 Python 3.12，在隔离 HOME／状态并禁用自动 pytest 插件后执行上述三文件，不在运行实例安装测试依赖。更早的缺历史测试失败与未验证项不改成通过；独立权限反例、随包自检和真实作品各自独立，不能相加成“全核心验收”。
+
+除独立复核记录外，本节短文件名均位于私有 `core-548d148-final` 证据目录。原任务身份、实例配置、回执、截图、作品与核心包不随公开连接器分发。
+
+以下历史记录按原日期、源码版本和包 hash 归属；其中的“本次／新包／最新”只指各节当时的版本，不为 0.4.1 或后续版本背书，也不把有限样本或测试数扩称全部能力。
+
+<a id="v040"></a>
+
 ## 0.4.0 原生工作台：已验范围与发布记录 / Native workbench status
 
-**2026-10-29 的私有回执已记录原生工作台、配置保存／重载、成员选择、能力发现、原生开关及正式 TGZ 安装后的真实调用。** 不再把已修复的配置接线或已经实跑的 Marked 链路列为未验。最新任务状态定位增量、最终发布回归与固定公开版本安装由主线程另行验收，不在本页提前宣布通过。公开授权仅覆盖连接器；本次采用 **Git/tag `v0.4.0`，不是 npm publish**。
+**0.4.0 程序已公开，固定提交为 `42dc33e34f22ce94a6379fe829bc75abbad09bf0`，`v0.4.0` 指向同一提交。** 最终程序通过 531 项测试，匿名固定提交新装成功，29/29 个安装文件与该提交一致，并完成下列范围的真实浏览器检查。该次采用 **Git/tag，不做 npm publish**，未另建 GitHub Release；后续说明提交不改变该版本的程序字节或移动标签。
 
-**October 29 receipts cover the native workbench, saved settings/member preferences, discovery, native switches and real tool calls from a formally exported TGZ.** The latest task-status positioning change, final release regression and installation from the public fixed version are tracked separately and are not declared passed here. Connector publication is authorized via **Git/tag `v0.4.0`, not npm publish**; local acceptance does not predeclare public-installation success.
+**The public 0.4.0 code and tag are pinned to `42dc33e34f22ce94a6379fe829bc75abbad09bf0`.** Final regression passed 531 tests; anonymous fixed-commit installation succeeded with 29/29 matching files, followed by the scoped browser checks below. Earlier candidate-stage member selection, bundle switches and real Marked calls remain separate evidence. At this record's cutoff, complete browser acceptance of the task-status positioning change was still unproven. Distribution is **Git/tag, not npm publish**; documentation updates do not move the tag.
 
-| 范围 / Scope | 当前事实 / Current facts | 还不能声称 / Not yet established |
+| 范围 / Scope | 该版本记录时点的事实 / Recorded facts for this version | 还不能声称 / Not yet established |
 |---|---|---|
-| 原生安装与五页 | 已在 DSH 安装启用并打开侧栏 **军团 / Legion**。五页为 **我的军团 / My Legion、找能力 / Discover、添加能力 / Add capabilities、接入任务 / Integration tasks、连接与配置 / Connection**；使用真实 DSH 工作会话。 | 以下只确认有回执的操作，不等于所有控件、所有视口或最后定位增量已验，也不代替公开 `v0.4.0` 安装。 |
-| 无核心与搜索 | 原生回执记录工具／Skill 搜索、切来源清旧结果、市场未启用提示、启用但无索引提示，以及配置索引后的正向搜索。核心故意不可达时，截图仍显示本会话工具，能力包列表仍可读，配置随后恢复。公开 GitHub、读源及包装入口也不依赖核心。 | 无核心回执证明本地发现／列表，不冒充这时重新执行工具或完成了全部 GitHub 旅程；市场搜索未据此安装结果。发现不等于授权或运行。 |
+| 原生安装与五页 | 固定公开提交已匿名新装，在 **DSH 原生插件页明确启用**后打开侧栏 **军团 / Legion**。五页为 **我的军团 / My Legion、找能力 / Discover、添加能力 / Add capabilities、接入任务 / Integration tasks、连接与配置 / Connection**；一个已有工作会话自动选中。 | 安装本身未自动启用，且保留 peer dependency warning。以下只确认有回执的操作，不等于所有控件、所有视口或最后定位增量已验。 |
+| 无核心与搜索 | 公开新装未配置核心凭据或模型，实查当前会话 **30 个工具、1 个 Skill**；GitHub `marked` 搜索返回 **8/8578**，找到 `markedjs/marked`。匿名限流解除后，原 Host 原路读取固定源码成功，README、清单和许可文件状态均为 `read`。此前候选阶段另有配置市场正向搜索与核心不可达时发现的回执。 | 初始 HTTP 403 保留，不假报全程成功；界面展示为有界摘要，读取许可不等于完成许可评估。无核心新装没有提交模型／核心任务，也未把搜索结果自动安装；发现不等于授权或运行。 |
 | 明确安装与开关 | **安装 / 更新**仍调用官方 `pluginManager` 的 `enabled:false`：新包不自动选择启用，更新保留已有开关。已记录新装、整包／子插件开关与工具可见性；正式下载 TGZ 的安装和真实调用见下节。 | 若不希望更新后的代码运行，先在下方停用对应包。安装、选择启用、实际加载、构建批准和真实调用分别确认；恢复／取消请求仍复用原生接口，不是第二个安装器。 |
-| 成员、配置与委托 | 原生浏览器记录修改 `tokenEnv` 后保存、重载、恢复原值，以及选择 Codex 后保存。`candidateHarnesses` 留空由军团选人；可编辑任务经 Host 提交给既有核心，固定来源仅作上下文。 | 勾选不安装或授权，保存不证明模型可用；不将一次配置读写扩大成全部轮换／冲突场景已验。适配方式由执行者决定，不保证任意代码自动转成工具。 |
+| 成员、配置与委托 | 候选阶段记录选择 Codex 后保存。公开新装另用 UI 保存令牌环境变量的**引用名**，刷新后保留，再恢复原值，配置回执版本为 2；没有写令牌内容。GitHub 的 **检查并交给军团**只准备可编辑任务，不提交或安装。 | 勾选不安装或授权，保存不证明模型可用；公开新装任务页如实显示缺核心令牌。`candidateHarnesses` 留空由军团选人，适配方式由执行者决定，不保证任意代码自动转成工具。 |
 | 原任务状态与下载 | 修复前大 runtime 吃尽共享投影预算，缺失字段曾被显示成假零。修复后真实原任务显示 **8 条历史成果记录**，保留 `artifact_archive_unsupported`；中文说明从工作台正式下载，字节／hash 与来源一致。运行、成果、拒绝原因、游标和截断事实分别展示。 | 8 条记录不是 8 件独立新作品；不完整不能称零。**下载文件**复用原 `/legion download`，保存到 DSH 主机，不是浏览器下载；不扩大根或授权。最新定位增量的浏览器验收单列。 |
 | Host 与恢复边界 | `/legion-panel` 使用真实命令会话、`recordInput:false`、只读工具 metadata 和显式大小投影。凭据每次读取检测变化；已绑定身份改变后停止旧连接器并要求重载。 | 新身份不继承旧任务索引，也不删除旧记录；本地等待结束不取消远端任务。任务列表是本地索引，不是实时完成证明。 |
-| 发布记录 | 已获公开连接器发布授权，安装入口固定为[Git `v0.4.0`](MARKET.md#v040)。主线程在本次文档收口前读回：`origin/main` 仍为 `b749f7c`，当时尚无 `v0.4.0`；社区 PR #740 已合并。 | 这是 **2026-10-29 发布前快照**，不预报推送或安装成功。固定版本公开安装回执随本次发布记录单列；不把目录合并、授权或本地安装当成最终公开安装。 |
+| 发布记录 | 公开程序与 `v0.4.0` 均固定为 `42dc33e34f22ce94a6379fe829bc75abbad09bf0`；安装入口见[固定 Git 安装](MARKET.md#v040)。首次收录 PR #740 已合并；新版说明 [PR #748](https://github.com/imsai-sh/awesome-deepseek-harness-plugins/pull/748) 已提交，`static-review` 成功，Codex Review 已完成且未报告发现。 | **截至 2026-10-29，PR #748 仍为 OPEN，等待维护者审核；不是新版说明已合并。** 无 npm 发行，1024Store 仅浏览仓库、不提供该包安装命令；Git 安装不受此限制。 |
 
-上述浏览器事实来自私有 `browser-acceptance.json`、`no-core-native-acceptance.json`、`original-task-projection-and-text-download.json` 与 `workbench-session-isolation.json`。切到另一工作会话后，原任务及下载回执不显示；不将该次检查扩大成最新定位增量的迟到回包／焦点验收。本次只读回已有记录，不重复安装、操作浏览器或调用模型。
+此前候选阶段的浏览器事实来自私有 `browser-acceptance.json`、`no-core-native-acceptance.json`、`original-task-projection-and-text-download.json` 与 `workbench-session-isolation.json`，该次收尾复用而非重新执行。切到另一工作会话后，原任务及下载回执不显示；不将该次检查扩大成最新定位增量的迟到回包／焦点验收。**固定公开提交的新装与浏览器操作于 2026-10-29 执行，记录如下，不与候选阶段混算。**
+
+### 固定公开提交的新装验收（2026-10-29）
+
+该次安装命令保留如下，`web` 为示例 profile，需保留 `-w`；不是当前候选的安装命令：
+
+```sh
+dsh plugin --profile web -w add 'github:seanliii/dsh-plugin-legion#42dc33e34f22ce94a6379fe829bc75abbad09bf0'
+```
+
+- **固定字节：** 匿名 Git 安装退出 0，29/29 个安装文件与 `42dc33e34f22ce94a6379fe829bc75abbad09bf0` 一致；`v0.4.0` 的 annotated tag 对象为 `d1c95da1e7acec818c6b3dd00498db97144ac846`，指向该提交。安装保留依赖兼容警告，不声称零警告。
+- **浏览器：** 使用官方 DSH **0.2.1-rc.2**，在 **1440×1000** 桌面与 **390×844** 窄屏实际打开、切页、点击搜索与保存配置。窄屏无页面横向溢出；最终页面非空，页面错误与控制台错误为空。10 张验收截图已经逐张查看，没有待查看截图。
+- **GitHub 失败与恢复：** 起初匿名接口 HTTP 403；限流重置后，同一 Host 原路在 **2026-10-29 07:17:36 UTC** 成功读取 `markedjs/marked`，固定提交为 `ce78bb06863f2bb733b2bc1f6c4590106b0d4dce`。未换账号、凭据或代理。读取 README、`package.json` 和 `LICENSE` 不等于适配完成，许可评估仍为 `not_performed`。
+- **范围：** 新装没有核心凭据或模型，没有模型请求或核心任务提交。正式下载、Marked TGZ 安装和两个工具调用来自下节候选阶段证据，不宣称在公开新装重跑。源码和测试的 40 个 hash 与最终回归记录一致；这次文档更新不重新声称完整 UI 验收。
+
+私有依据为 `publish-final/verification.json`、`public-installed-byte-readback.json`、`public-browser-acceptance.json` 与 `public-source-recovered-receipt.json`。回执与截图不进入公开连接器。
 
 <a id="formal-marked-acceptance"></a>
+<a id="正式出口--安装--原生开关--真实调用候选阶段2026-10-29"></a>
 
-### 正式出口 → 安装 → 原生开关 → 真实调用（2026-10-29）
+### 正式出口 → 安装 → 原生开关 → 真实调用（0.4.0 候选阶段／c8f10c6，2026-10-29）
 
 - 原 TGZ 未导出的确切原因是 **`artifact_archive_unsupported`**，不是仅凭推断认定的收尾竞态或项目身份缺失。原失败记录保留；核心补齐原内容检查中的受限 TGZ 支持后，沿原 checkpoint 续作，续作任务正式导出并通过工作台原下载入口取回。没有扩大下载根、伪造授权或跳过扫描。
 - 正式下载 `@local/dsh-marked-tools` **0.1.0** TGZ 为 **27,224 字节**，SHA-256 **`d1a788370043ed7912ab30ecc34fdb31621f530727114540fa32a1776c8d8966`**。来源与下载字节一致，安装后的 **18/18 文件**又与该归档逐一一致，不是拿另一份工作目录包补报。
@@ -42,22 +125,24 @@
 | `final-verification/plugin-all-tests.log` | **529 项通过**，失败／取消／跳过为 0；`results.json` 保存执行命令和源文件 hash。 | 当时 client hash 前缀为 `5a996a2b`、Host workbench 为 `c097622b`；是旧源码快照，不是最终公开字节或最新 UI 文案的全量验收。 |
 | `final-verification/core-archive-export-http.log` | **230 项通过**：归档安全、项目成果导出及预期 hash 三个定向测试文件。 | 当时扫描器 hash 前缀 `a33d510c`、导出模块 `5c6e4c2a`；按该批字节归属，不补报为后来 `c8f10c6` 打包后的全量重跑。同期 quick selfcheck 的 tests 为 `skipped`，不另算通过数量。 |
 | `install-semantics/green.json` | 新安装文案红测 **2 failed** 后，双语文案及既有安装参数定向 **3 passed**，保留 `enabled:false`，控制器逐字未变。 | 该次 client hash 为 `0cfdb252dc3d37c537ce9db3da5cb3a58326e927bef4bf896214190760d3c7c4`；只证明该增量，不含重复焦点测试或最终发布回归。 |
+| `publish-final/verification.json`、`all-tests.log` | Node 24 下 `npm run check`、`npm test` 均退出 0；**531 项通过，失败／取消／跳过为 0**。 | 对应公开程序 `42dc33e34f22ce94a6379fe829bc75abbad09bf0`，40 个源码／测试 hash 在收尾重新核对一致。与旧批次不相加，也不代替真实浏览器或模型调用。 |
 
-本页整理时没有重跑上述测试。主线程的最终回归、最新定位增量及公开安装结果须对应最终文件／提交另存，不能把旧测试数改名成最新全量。
+上述 0.4.0 最终程序回归与公开安装已有各自历史回执；本次文档整理不重复运行程序回归或模型调用，也不把它们记成 0.4.1 验收。旧 529 项等批次保留原日期与源码归属，不改名为最新全量。任务状态定位增量仍不由自动测试代替完整浏览器验收。
 
-<a id="current-private-core"></a>
+<a id="historical-c8f10c6"></a>
+<a id="当前私有核心包c8f10c62026-10-29"></a>
 
-## 当前私有核心包：c8f10c6（2026-10-29）
+## 历史私有核心包：c8f10c6（2026-10-29）
 
 固定提交 **`c8f10c60a9836c03aa693b37d5c1e76c86d358ff`**，**602 个源码文件**，整包 SHA-256 **`b2cf08bdb903b8d3093570b07a50eee630ccfa0692c84bee511f70e5d57c16b4`**。`core-archive-release/build-physical-path.json`、`verify.json`、`extract.json` 与 `.sha256` 一致；原实例升级回执保留私有配置、工程、团队、任务记忆、成果、原生 checkpoint、会话、原工作文件与正式下载，包文件无 hash 差异。
 
 这版的新增真实链路是上面的正式 TGZ 续作、导出、安装与调用，不把 `60872ced` 的互动网页、手机／桌面操作或旧重启结果当成在此包重新执行。当前仍为 **`private-local-only`**，包清单的 `public_license_granted=false`、`member_execution_verified=false` 不因单次成功而改写。文件数不是工具数，连接器公开授权不包含核心。
 
-## 上次公开核验：0.2.0（2026-10-28）
+## 历史公开核验：0.2.0（2026-10-28）
 
 - 公开仓库：[`seanliii/dsh-plugin-legion`](https://github.com/seanliii/dsh-plugin-legion)，默认分支 `main`，topic `dsh-plugin`。
 - 2026-10-28 读回的公开提交为 `b749f7c0d324b0a4ef0d66611c1c57a8623b2774`；此前已从匿名公开 Git 读回并核对该提交的 43 个文件字节。
-- 上次记录的社区目录投稿 [PR #740](https://github.com/imsai-sh/awesome-deepseek-harness-plugins/pull/740) 已于 **2026-10-28 10:48:37 UTC** 合并。原先“仓库为空、未推送、未投稿”的记录已过时；本次文档子项未联网，主线程本轮发布前读回另列上表。
+- 首次社区目录投稿 [PR #740](https://github.com/imsai-sh/awesome-deepseek-harness-plugins/pull/740) 已于 **2026-10-28 10:48:37 UTC** 合并。它与 2026-10-29 的 0.4.0 新版说明 PR #748 是两条不同记录；该版发布和新装见本页上节。
 - 这是社区目录收录，不是 DeepSeek 官方背书、npm 发布或全部后端能力验收。
 
 ## 0.3.0 基础能力与独立核心的历史记录
@@ -72,15 +157,17 @@
 | 媒体上下文 | 去掉“工具已配好 key”的无依据提示。实际发现个人配置缺少图片输入声明；同模型、提供方和凭据的图片请求成功后，经随包配置入口声明 `text`／`image`，原任务作者随后看图返工。 | 原生 trace 有同一调用的 `view_image` 和 `input_image` 返回；未认证每次远端出站图片，也不是全模型视觉质量证明。 |
 | 连接器回归 | 已保存的最终组合记录为 **440 项通过**，失败／取消／跳过均为 0；独立审查未发现指定 0.3.0 差异的新阻断项。 | 协议与隔离 Runtime 回归不等于全部真实用户场景；发布前仍须核对最终提交和包内容。 |
 | 核心相关回归 | 旧作品包相关组合 **322 项通过**；三处接线修复的相关组合 **414 项通过**；后续长期方向配置相关组合 **204 项通过、1 项跳过**，独立原失败及兼容复核 **19 项通过**。 | 各次范围不同，不相加成覆盖数；不是原大仓全部测试，也不是所有成员、平台、媒体和设备的实测。 |
-| 私有核心发行 | 旧作品包 `5a26f9cf` 有 **596 个源码文件**；三处接线包 `ee247d7a` 有 **599 个**；该轮 `60872ced356b6a078aee656256e8ce9711a5ac1e` 有 **601 个**，完成固定字节打包、校验和全新目录解包。 | 当前 `c8f10c6` 包见上节，不借用这些旧验收。源码文件数不是工具数；核心公开许可与第三方分发范围尚未确认，不随连接器 MIT 发布。 |
+| 私有核心发行 | 旧作品包 `5a26f9cf` 有 **596 个源码文件**；三处接线包 `ee247d7a` 有 **599 个**；该轮 `60872ced356b6a078aee656256e8ce9711a5ac1e` 有 **601 个**，完成固定字节打包、校验和全新目录解包。 | 历史 `c8f10c6` 包见上节，不借用这些旧验收。源码文件数不是工具数；核心公开许可与第三方分发范围尚未确认，不随连接器 MIT 发布。 |
 | 长期方向与工作现场 | 保留工具授权现场及已选择的近期经验；独立实例可用 `configure-goals --file`／`--clear` 明确采用或撤回长期方向，不从旧仓自动带入。 | 方向默认不采用；原继续分支最多选择一条 500 字方向，不保证首轮、首脑直接继续或全部成员收到／采用。 |
 | DSH → 核心 → 作品 | 新 DSH profile 原生安装连接器并委托 Codex 制作互动网页；旧包完成首次作品与恢复验收。该轮 `60872ced` 包在同一实例、身份、模型配置和原 checkpoint 上续作，完成看图返工、正式下载、手机／桌面检查和再次重启读回。 | 真跑的是一个个人实例、一个原生成员与一件作品；有监督者回交失败现场，不证明所有顶尖 Harness 已就绪、无人自治或动态协作普遍更强。 |
 | 原生工具协作旧证据 | 原 DSH 会话已完成真实 `legion_call` 读文件，再独立 `legion_message`；同键恢复只返回元数据，未重做工具。 | ACK 不证明远端模型消费，不自动唤醒终态任务；这份旧证据不与新核心作品验收混算。 |
 | `marked` 示例 | 保留此前固定源适配、隔离官方 Runtime 和包装读回证据。 | 本行仅属旧版本；2026-10-29 正式 TGZ 安装、开关与真实调用已在[本轮窄链路](#formal-marked-acceptance)另列，不再笼统写成 Marked 未验，也不由包装回执替代调用。 |
 
-**上次公开读回对应 0.2.0；0.3.0 的旧本地证据与当前 0.4.0 目标版分开记录。** 本轮未据此推断线上最新状态；发布 0.4.0 后需重新匿名读回固定提交。DSH 运行契约仍固定 **`0.2.1-rc.2`**，不把研究过的新候选版本当成已完成兼容升级。
+**0.2.0 的历史公开读回、0.3.0 的旧本地证据与 0.4.0 公开新装分开记录。** 0.4.0 固定提交的匿名安装和逐文件读回已在上节列明，不借旧证据替代，也不转为 0.4.1 的验收。DSH 运行契约仍固定 **`0.2.1-rc.2`**，不把研究过的新候选版本当成已完成兼容升级。
 
-## 新接线修复包验证到哪里
+<a id="新接线修复包验证到哪里"></a>
+
+## 历史 ee247d7a 接线修复包验证到哪里
 
 核心提交：`ee247d7a686ae6770db6cfbfdd289ce70991c2cb`。包内 **599 个源码文件**逐个核对 hash；整包 SHA-256 为 `10508eb5c09f333c9c50dbd27343b229057fe40ca2ae3732e5b04728c6217896`。本轮用此包解压到全新目录重放，不再依赖旧开发树的路径。
 
@@ -113,7 +200,7 @@ OpenMontage 本次取得的版本为 `cd9f3c1f03368be87b140af494914b8ee4e3c7a4`�
 
 ## 历史 60872ced 包续作与重启验收
 
-本节固定核心提交为 `60872ced356b6a078aee656256e8ce9711a5ac1e`，包 SHA-256 为 `dda2652fefe1d5f73a70a041dc95578e9b5ba443c10a68d947955310a0c2b2a5`。build、verify、extract 均退出 0，601 个源码文件 hash 相符。包内没有 `.git`，不依赖旧开发目录的快捷链接；仍为 `private-local-only`。以下作品和重启事实只属于这份历史包，**不冒充当前 `c8f10c6` 重跑**。
+本节固定核心提交为 `60872ced356b6a078aee656256e8ce9711a5ac1e`，包 SHA-256 为 `dda2652fefe1d5f73a70a041dc95578e9b5ba443c10a68d947955310a0c2b2a5`。build、verify、extract 均退出 0，601 个源码文件 hash 相符。包内没有 `.git`，不依赖旧开发目录的快捷链接；仍为 `private-local-only`。以下作品和重启事实只属于这份历史包，**不冒充 `c8f10c6` 或后续候选包重跑**。
 
 这次没有另建实例或重新开始任务：在原虚拟环境、实例、身份、个人 Responses 模型配置和 DSH 会话中，使用新包启动原服务，沿原 Codex checkpoint 继续同一件作品。真实请求记录的模型为 `gpt-5.4`；这是请求与原生 trace 中的名字，不是远端权重认证。
 
@@ -127,15 +214,17 @@ OpenMontage 本次取得的版本为 `cd9f3c1f03368be87b140af494914b8ee4e3c7a4`�
 
 私有回执为 `core-wiring-repair/goals-release-20261029/new-package.json`、`native-cwd-repair-native-trace.json`、`native-cwd-repair-bytes-verified.json`、`goals-final-browser-acceptance.json`、`goals-final-restart-preservation.json` 和 `goals-final-post-restart-{status,download-html,download-readme}.json`。原失败与误写稿保留，不随连接器包公开。
 
-在本节旧核心验收记录的时点，连接器程序未因那次说明更新而改变，复用当时已经保存的 440 项组合测试，没有重复调用模型；**这不是当前 0.4.0 工作台代码未变或已经验收的声明**。长期方向相关测试见 `core-wiring-repair/goals-final-20261029/green.json` 及相邻输出，独立复核见 `core-wiring-repair/goals-review/final-run.json`。这些测试与上述真实作品证据分别记账，不相加、不互相替代。
+在本节旧核心验收记录的时点，连接器程序未因那次说明更新而改变，复用当时已经保存的 440 项组合测试，没有重复调用模型；**这不是 0.4.0 或 0.4.1 工作台代码未变或已经验收的声明**。长期方向相关测试见 `core-wiring-repair/goals-final-20261029/green.json` 及相邻输出，独立复核见 `core-wiring-repair/goals-review/final-run.json`。这些测试与上述真实作品证据分别记账，不相加、不互相替代。
 
-## 仍未完成／未证明
+<a id="仍未完成未证明"></a>
 
-1. **最终发布字节对应的回执。** 固定公开版本的 push／tag、匿名提交读回及安装结果随本次发布记录单列；最新任务状态定位增量与最终回归由主线程单独验收，本页不预报通过。已经记录的配置、搜索、开关及 Marked 真调用不再作为笼统未完成项。发布不需要另找一次连接器授权，也不包含 npm publish。
-2. 最终 Git tree、包内容、文档与实际发布提交一致性，按发布回执归档；历史测试和本次文档更新不是最终字节的自动验证。
-3. 核心的公开发行。必须先确认第一方公开许可与第三方分发依据，不能用连接器发布授权代替权属证明。
+## 封包时待核对／未证明
+
+1. **0.4.1 发布后固定字节新装。** 封包前的源码回归、配置更换与恢复下载、上述 390 宽检查已有回执；R 与标签实际公开、最终 TGZ 身份及匿名按 R 的完整 SHA 全新安装，须由发布后的实际回执补充。随标签冻结的本记录不预先宣布通过，后续 B 文档见仓库 `main` 与 Release；0.4.0 的公开新装不为 0.4.1 背书。
+2. **社区目录新版说明的维护者合并。** PR #748 的静态检查成功，自动合并跳过；截至 **2026-10-29** 仍待维护者审核，此后状态未在本轮重新核对。本次不做 npm publish，也不声称商店已有一键安装。
+3. 核心的公开发行不在本轮授权内。548d148 的包校验、默认出口、续作与随包关键回归不改变 `private-local-only`；须另行确认第一方公开许可与第三方分发依据，不能借连接器授权公开核心。
 4. 全部可选 Harness、媒体、设备及开源项目的实际接入。目录和保留源码不等于已安装、已授权、已运行。
-5. 完全无人值守、所有场景自动返工与“超过顶尖单家”的普遍结论。历史截图反馈来自监督者；正常续作已验证，旧后台自动修复仍有独立身份要求，见[核心边界](CORE.md#军团的核心没有变成一句宣传语)。
+5. 完全无人值守、所有场景自动返工与“超过顶尖单家”的普遍结论。已有作品检查与截图反馈来自监督者；普通续作与后台自动修复的身份和运行要求分开，见[核心边界](CORE.md#军团的核心没有变成一句宣传语)。
 
 安装、启用与构建脚本遵守原生权限。保留许可证、合法项目身份、导出授权、取消与恢复边界，不通过假成功或扩大下载根“接通”成果。
 

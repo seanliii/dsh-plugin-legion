@@ -2,23 +2,21 @@
 
 English | [简体中文](README.zh-CN.md)
 
-Express what you want once. DSH can discover existing capabilities, read actual source, adapt useful interfaces into native plugins, and delegate work to your Legion core for research, collaboration, revisions and file delivery. **The aim is one useful entry point into an ecosystem, not a larger control panel.**
+Find existing tools, read public source, and install capability bundles you have reviewed—all within DSH. Connect a separately installed Legion core you are authorized to use to delegate research, collaboration, revisions and formal file delivery. **Connector version: 0.4.1; the separate `private-local-only` core has no public download release.**
 
-`dsh-plugin-legion` **0.4.0** adds a five-page workbench in DSH's native sidebar. The actual Legion core is installed separately; native harnesses, media models and devices are added as needed. This public connector does not bundle the private core, private data, a company monorepo or its history, complete third-party upstream repositories, or model weights.
+## Get started
 
-**Acceptance records — October 29, 2026:** private receipts cover native installation, settings read/save/reload, member selection, tool/Skill and configured-market discovery, core-unreachable discovery, and installation and real use of two tools from a formally exported TGZ. These are scoped results, not acceptance of every control or later revision. The latest task-status positioning change, final release regression and installation from the public fixed version are tracked separately and are not declared passed here. Publication of the connector is authorized via Git/tag **`v0.4.0`, not npm publish**. See [versioned evidence and release records](docs/PLAN.md).
+1. Follow the [**v0.4.1 installation guide**](docs/MARKET.md#v041), then explicitly enable Legion in **DSH Plugins**.
+2. Open **Legion** in the sidebar, choose a **Working session**, and start with **Discover**. Searching tools, Skills and public GitHub needs no Legion core.
+3. Review sources before deciding to install. For delegated research and delivery, first obtain a core you are authorized to use, then follow [core configuration](docs/CORE.md#安装自己的实例); installing this connector does not supply one.
+
+Try an ordinary DSH request:
 
 ```text
-DSH: conversation, native tools, permissions and UI
-  ↕ Legion plugin: discovery, source, packaging, tasks and files
-Independent Legion core: research, orchestration, recovery and delivery
-  ↕ Existing member/capability interfaces, installed and authorized as needed
-Native harnesses · CLI / MCP / skills · Media · Devices
+Find an existing plugin for the capability I need. Show its sources and limitations before installing anything.
 ```
 
-**No Legion core or token is needed to search current DSH tools, Skills or public GitHub.** Source reading, packaging and available native bundle-management services also work independently of the core. Skills provide guidance, not new executable tools. Collaboration requires a compatible service and a personal identity you are authorized to use. DSH keeps its own loop; Legion owns delegated work, and this connector does not add another commander. This is independent community code, not an official DeepSeek product.
-
-**[Core capabilities and installation](docs/CORE.md)** · [Ecosystem and principles](docs/ECOSYSTEM.md) · [Actual delivery status](docs/PLAN.md) · [Protocol](docs/PROTOCOL.md) · [Security](docs/SECURITY.md)
+[Versioned evidence and current status](docs/PLAN.md) · [Limits, data and license](#limits-data-and-license)
 
 ## What you can do
 
@@ -34,13 +32,7 @@ Native harnesses · CLI / MCP / skills · Media · Devices
 | Follow remote work | `legion_status` | Task state, events, commander messages and formal exports; no automatic mailbox execution. |
 | Receive actual files | `legion_download` | Downloads formal artifacts of this task and compares their bytes with the service's SHA-256. |
 
-After enabling the connector, try an ordinary DSH request:
-
-```text
-Find an existing plugin for the capability I need. Show its sources and limitations before installing anything.
-```
-
-Or ask DSH to inspect a public repository, adapt its real interfaces, and package independently useful capabilities. **This is not an automatic converter for arbitrary applications.** The on-demand `legion-ecosystem` skill supplies the available tools and development references.
+You can also ask DSH to inspect a public repository, adapt its real interfaces, and package independently useful capabilities. **This is not an automatic converter for arbitrary applications.** The on-demand `legion-ecosystem` skill supplies the available tools and development references.
 
 The core retains world-reference research, intent context, native collaboration, knowledge reuse, failure feedback, continued revision and formal delivery through existing modules. See the [capability map](docs/CORE.md). Retaining a mechanism does not prove every member is installed or that a team generally outperforms the strongest individual harness.
 
@@ -69,15 +61,19 @@ This is a parameter template, not a published package address. For public pinned
 
 Host plugins run **outside the agent sandbox**. Review code and dependencies before trusting them; see [Security](docs/SECURITY.md).
 
-### Fixed-version public Git installation — v0.4.0
+### Fixed-version Git installation — v0.4.1
 
-This release uses **Git/tag, not npm publish**. Before installing, check that the public `v0.4.0` tag resolves to the reviewed commit in the release record. Tag availability and installation from that fixed version are recorded separately; this command is not an installation-success receipt. `web` is an example profile; keep `-w`:
+Use this version's fixed tag once published; replace the example `web` profile as needed and retain `-w`:
 
 ```sh
-dsh plugin --profile web -w add 'github:seanliii/dsh-plugin-legion#v0.4.0'
+dsh plugin --profile web -w add 'github:seanliii/dsh-plugin-legion#v0.4.1'
 ```
 
-A tag can move. For an audited, reproducible installation, use the reviewed full commit SHA instead; see [installation and publication routes](docs/MARKET.md). Check the actual loading state in DSH Plugins after installation.
+The [installation guide](docs/MARKET.md#v041) separates packaging-time checks from the later anonymous installation of the exact public commit. Follow-up results belong in the repository's `main` documentation and Release; this frozen version does not claim that public-installation check has passed. Tags are not moved to incorporate later documentation.
+
+<a id="fixed-version-public-git-installation--v040"></a>
+
+Historical **0.4.0** commands, commit, tag and scoped acceptance remain in the [0.4.0 records](docs/PLAN.md#v040), not as evidence for 0.4.1.
 
 ## Open the native workbench
 
@@ -104,8 +100,6 @@ If an install reply is uncertain, keep its request ID and use **Recover install 
 The task page does not auto-poll or execute incoming messages. It can page through artifact records and events, and **Download file** reuses the existing **`/legion download`** command in the selected original conversation. The file is saved on the **DSH Host**, not automatically in the browser's Downloads folder; the receipt shows its path, byte count and hash check. Same-name/history records remain distinct, and clipped details or refusal reasons stay marked incomplete. Continuation, feedback and cancellation still use **`/legion` in the original conversation**, not new task-page actions. [Projection and download limits](docs/PROTOCOL.md#workbench-projection) · [Detailed workflows](docs/ECOSYSTEM.md#native-workbench).
 
 ## Connect your independently installed Legion core
-
-The October 29 native-browser record includes reading settings, changing `tokenEnv`, saving/reloading and restoring it, plus saving member selection. That scoped check is not proof of every credential-rotation case or a successful model request.
 
 See [Core installation](docs/CORE.md) to create an instance and configure your own model provider. On the same machine, run this from the core directory:
 
@@ -159,10 +153,28 @@ The official result observer records ancestor **status metadata only**. Same-key
 
 Message acknowledgement is separate from execution and **does not prove remote-model consumption or wake a finished task**. The bridge's text projection omits binary media; local DSH image forwarding is not full-media transfer to Legion. See the [two-step protocol](docs/PROTOCOL.md#6-two-step-collaboration).
 
+## How DSH and Legion work together
+
+Express what you want once. DSH can discover existing capabilities, read actual source, adapt useful interfaces into native plugins, and delegate work to your Legion core for research, collaboration, revisions and file delivery. **The aim is one useful entry point into an ecosystem, not a larger control panel.**
+
+```text
+DSH: conversation, native tools, permissions and UI
+  ↕ Legion plugin: discovery, source, packaging, tasks and files
+Independent Legion core: research, orchestration, recovery and delivery
+  ↕ Existing member/capability interfaces, installed and authorized as needed
+Native harnesses · CLI / MCP / skills · Media · Devices
+```
+
+The connector provides a five-page workbench in DSH's native sidebar. The actual Legion core is installed separately; native harnesses, media models and devices are added as needed.
+
+**No Legion core or token is needed to search current DSH tools, Skills or public GitHub.** Source reading, packaging and available native bundle-management services also work independently of the core. Skills provide guidance, not new executable tools. Collaboration requires a compatible service and a personal identity you are authorized to use. DSH keeps its own loop; Legion owns delegated work, and this connector does not add another commander.
+
+**[Core capabilities and installation](docs/CORE.md)** · [Ecosystem and principles](docs/ECOSYSTEM.md) · [Versioned evidence](docs/PLAN.md) · [Protocol](docs/PROTOCOL.md) · [Security](docs/SECURITY.md)
+
 ## Limits, data and license
 
 Repository text, catalog descriptions and task messages are untrusted material, not instructions or permission grants. Source hashes identify bytes; packaging is not runtime verification; download integrity is not file safety. Redaction is bounded, not a universal secret detector.
 
 Keep recovery state private. New v2 native-call records retain metadata, not result bodies; old records and both systems' sessions may still contain content. Uninstalling does not delete user files or cancel remote work.
 
-[MIT](LICENSE) covers this connector only. The separate core remains **`private-local-only`**; its first-party public license and third-party redistribution rights are unresolved, not inherited from this connector. The Marked acceptance bundle is a separate local artifact, not bundled with this connector. Private core code, instance data, credentials, logs, complete third-party upstream repositories and model weights are not shipped here. Neither the capability map nor one successful task proves all members are installed or work unattended.
+[MIT](LICENSE) covers this connector only. The separate core remains **`private-local-only`**; its first-party public license and third-party redistribution rights are unresolved, not inherited from this connector. The Marked acceptance bundle is a separate local artifact, not bundled with this connector. Private core code, user or instance data, credentials, private evidence and logs, company business code, company monorepos or their history, complete third-party upstream repositories and model weights are not shipped here. Neither the capability map nor one successful task proves all members are installed or work unattended. This is independent community code, not an official DeepSeek product.

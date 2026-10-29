@@ -147,6 +147,7 @@ window.__ModuleLoader__.load({
       let form
       let formOwner
       let stopForm
+      let statusRead
       const services = {}
       const listeners = new Set()
       const sequences = new Map()
@@ -158,7 +159,7 @@ window.__ModuleLoader__.load({
         available: {}, busy: {}, errors: {}, members: null, search: null, source: null,
         packages: null, plugins: null, config: null, configEntry: null, configNamespace: null, configSaved: false,
         inspection: null, installResult: null, installId: null, installUncertain: false, installCancellation: null,
-        tasks: null, taskStatus: null, download: null, operation: null, submission: null,
+        tasks: null, taskStatus: null, taskStatusStale: false, download: null, operation: null, submission: null,
       }
       const publish = patch => {
         if (disposed) return
@@ -166,14 +167,28 @@ window.__ModuleLoader__.load({
         for (const listener of listeners) listener()
       }
       const setError = (key, error) => publish({ errors: { ...state.errors, [key]: errorText(error) } })
-      const invalidate = keys => {
+      const invalidate = (keys, patch = {}) => {
         const busy = { ...state.busy }, errors = { ...state.errors }
         for (const key of keys) {
           sequences.set(key, (sequences.get(key) || 0) + 1)
           busy[key] = false
           errors[key] = null
         }
-        publish({ busy, errors })
+        publish({ busy, errors, ...patch })
+      }
+      const clearTaskView = () => {
+        statusRead = null
+        invalidate(['tasks', 'taskStatus', 'download'],
+          { tasks: null, taskStatus: null, taskStatusStale: false, download: null })
+      }
+      const observeConfig = (config, entryId = state.configEntry, namespace = state.configNamespace) => {
+        // Retained observations are scoped to the native connection too, not
+        // just the selected session/task. These are references, never tokens.
+        if (entryId !== state.configEntry || namespace !== state.configNamespace
+          || ['baseUrl', 'tokenEnv', 'tokenFile'].some(key => config?.value?.[key] !== state.config?.value?.[key])) {
+          clearTaskView()
+        }
+        return config
       }
       async function run(key, work, scoped = false) {
         if (disposed || state.busy[key]) return false
@@ -252,6 +267,7 @@ window.__ModuleLoader__.load({
         dispose() {
           disposed = true
           epoch++
+          statusRead = null
           stopForm?.()
           stopSessions()
           listeners.clear()
@@ -260,12 +276,14 @@ window.__ModuleLoader__.load({
           for (const key of Object.keys(services)) delete services[key]
         },
         attach(key, value) {
+          if (key === 'configuration' && services[key] && services[key] !== value) clearTaskView()
           services[key] = value
           publish({ available: { ...state.available, [key]: true } })
           return () => {
             if (services[key] !== value) return
             delete services[key]
             if (key === 'configuration') {
+              clearTaskView()
               invalidate(['config', 'configSave'])
               stopForm?.()
               stopForm = null
@@ -280,6 +298,7 @@ window.__ModuleLoader__.load({
           if (sessionId && !state.sessions.ids.includes(sessionId)) throw new Error('Unknown DSH session')
           if (sessionId === state.sessionId) return
           epoch++
+          statusRead = null
           const busy = { ...state.busy }, errors = { ...state.errors }
           for (const key of sessionKeys) {
             sequences.set(key, (sequences.get(key) || 0) + 1)
@@ -287,7 +306,7 @@ window.__ModuleLoader__.load({
             errors[key] = null
           }
           publish({ sessionId, busy, errors, members: null, search: null, source: null, tasks: null,
-            taskStatus: null, download: null, operation: operations.get(sessionId) || null, submission: submissions.get(sessionId) || null })
+            taskStatus: null, taskStatusStale: false, download: null, operation: operations.get(sessionId) || null, submission: submissions.get(sessionId) || null })
         },
         async refreshSessions() {
           await run('sessions', async () => {
@@ -320,9 +339,10 @@ window.__ModuleLoader__.load({
             formOwner = owner
             stopForm = target.subscribe(() => {
               if (services.configuration === owner && form === target && state.configEntry === entryId
-                && state.configNamespace === namespace) publish({ config: target.getSnapshot() })
+                && state.configNamespace === namespace) publish({ config: observeConfig(target.getSnapshot()) })
             })
-            return { configEntry: entryId, configNamespace: namespace, config: target.getSnapshot(), configSaved: false }
+            return { configEntry: entryId, configNamespace: namespace,
+              config: observeConfig(target.getSnapshot(), entryId, namespace), configSaved: false }
           })
         },
         saveConfig(draft, revision, entryId, namespace = entryId) {
@@ -346,7 +366,7 @@ window.__ModuleLoader__.load({
             const accepted = await target.mutate(configOperations(draft), revision)
             if (!current()) return
             if (!accepted) throw new Error('保存被拒绝或版本冲突；请重新读取后再改 / Save refused or revision conflict')
-            return { config: target.getSnapshot(), configSaved: true, members: null }
+            return { config: observeConfig(target.getSnapshot()), configSaved: true, members: null }
           })
         },
         clearSearch() {
@@ -466,16 +486,33 @@ window.__ModuleLoader__.load({
           return run('tasks', async id => ({ tasks: await command(id, 'tasks') }), true)
         },
         taskStatus(task_ref, options = {}) {
-          invalidate(['taskStatus', 'download'])
-          publish({ taskStatus: null, download: null })
+          // Claim before publishing: invalidation resets busy, and a retained
+          // click handler must not supersede an in-flight read of this task.
+          if (disposed || (statusRead && statusRead.task_ref === task_ref)) return Promise.resolve(false)
+          const request = { task_ref }
+          statusRead = request
+          const previous = state.taskStatus?.task_ref === task_ref ? state.taskStatus : null
+          // Keep the mounted view on refresh/paging, but invalidate freshness
+          // and downloads together before publishing any pending-read state.
+          invalidate(['taskStatus', 'download'], {
+            taskStatus: previous, taskStatusStale: previous !== null, download: null,
+          })
+          if (statusRead !== request) return Promise.resolve(false)
           const args = { task_ref }
           for (const key of ['after_event_id', 'after_message_id', 'artifact_offset']) {
             if (options[key] !== undefined) args[key] = options[key]
           }
-          return run('taskStatus', async id => ({ taskStatus: await command(id, 'status', args) }), true)
+          return run('taskStatus', async id => ({
+            taskStatus: await command(id, 'status', args), taskStatusStale: false,
+          }), true).finally(() => {
+            if (statusRead === request) statusRead = null
+          })
         },
         downloadArtifact(task_ref, artifact_id) {
           return run('download', async id => {
+            if (state.busy.taskStatus || state.taskStatusStale) {
+              throw new Error('状态非最新；请成功读取原任务后再下载 / Status is not current; read the task successfully before downloading')
+            }
             const item = rows(state.taskStatus?.artifacts).find(row => row?.artifact_id === artifact_id)
             if (typeof task_ref !== 'string' || !/^[a-f0-9]{32}$/.test(task_ref)
               || typeof artifact_id !== 'string' || !/^[a-f0-9]{32}$/.test(artifact_id)
@@ -541,10 +578,10 @@ window.__ModuleLoader__.load({
       .legion-panel h1{font-size:30px;line-height:1.3;font-weight:650;letter-spacing:-.7px;margin:8px 0 12px}.legion-panel h2{font-size:18px;line-height:1.4;font-weight:620;margin:0}.legion-panel h3{font-size:15px;line-height:1.4;margin:0;font-weight:600}.legion-panel p{margin:7px 0}
       .legion-eyebrow{font-size:11px;letter-spacing:1.8px;font-weight:650;color:var(--lp-muted)}.legion-muted,.legion-help{color:var(--lp-muted)}.legion-help{font-size:12px;line-height:1.6}.legion-lead{max-width:690px;font-size:14px;color:var(--lp-muted)}
       .legion-top,.legion-row,.legion-toolbar{display:flex;gap:12px;align-items:center;flex-wrap:wrap}.legion-top{justify-content:space-between;align-items:flex-start}.legion-row.between{justify-content:space-between}.legion-toolbar{margin:18px 0}
-      .legion-session{display:grid;gap:5px;min-width:230px;max-width:380px}.legion-panel button,.legion-panel input,.legion-panel select,.legion-panel textarea{font:inherit;color:inherit}.legion-panel button{cursor:pointer;border:1px solid var(--lp-border);border-radius:9px;padding:8px 13px;background:var(--lp-bg);line-height:1.4;min-height:36px}.legion-panel button:hover:not(:disabled){background:var(--dsw-alias-interactive-bg-hover,#f0f2f8)}.legion-panel button:disabled{cursor:not-allowed;opacity:.48}.legion-panel button.primary{background:var(--dsw-alias-button-primary-fill,#4866dd);color:var(--dsw-alias-label-primary-inverted,#fff);border-color:transparent}.legion-panel button.primary:hover:not(:disabled){background:var(--dsw-alias-button-primary-hover,#3c59ce)}
+      .legion-session{display:grid;gap:5px;min-width:230px;max-width:380px}.legion-panel button,.legion-panel input,.legion-panel select,.legion-panel textarea{font:inherit;color:inherit}.legion-panel button{cursor:pointer;border:1px solid var(--lp-border);border-radius:9px;padding:8px 13px;background:var(--lp-bg);line-height:1.4;min-height:36px}.legion-panel button:hover:not(:disabled):not([aria-disabled=true]){background:var(--dsw-alias-interactive-bg-hover,#f0f2f8)}.legion-panel button:disabled,.legion-panel button[aria-disabled=true]{cursor:not-allowed;opacity:.48}.legion-panel button.primary{background:var(--dsw-alias-button-primary-fill,#4866dd);color:var(--dsw-alias-label-primary-inverted,#fff);border-color:transparent}.legion-panel button.primary:hover:not(:disabled):not([aria-disabled=true]){background:var(--dsw-alias-button-primary-hover,#3c59ce)}
       .legion-panel :focus-visible{outline:2px solid var(--lp-accent);outline-offset:3px}.legion-panel input:not([type=checkbox]),.legion-panel select,.legion-panel textarea{background:var(--lp-bg);border:1px solid var(--lp-border);border-radius:9px;padding:9px 11px;min-width:0;width:100%}.legion-panel input[type=checkbox]{width:17px;height:17px;accent-color:var(--lp-accent);flex:none}.legion-panel textarea{resize:vertical;min-height:110px}
       .legion-tabs{display:flex;gap:5px;overflow:auto;border-bottom:1px solid var(--lp-border);margin:27px 0 25px;padding-bottom:10px}.legion-tabs button{border:0;white-space:nowrap;background:none;color:var(--lp-muted)}.legion-tabs button[aria-selected=true]{background:var(--lp-card);color:var(--lp-fg);font-weight:600}
-      .legion-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:13px}.legion-card{border:1px solid var(--lp-border);border-radius:14px;padding:19px;min-width:0;background:var(--lp-bg)}.legion-card.chosen{border-color:var(--lp-accent);background:var(--lp-card)}.legion-card .legion-title{display:flex;align-items:flex-start;gap:10px}.legion-title>div{min-width:0;flex:1}.legion-card p,.legion-panel code,.legion-panel a{overflow-wrap:anywhere}.legion-card p.description{color:var(--lp-muted);font-size:13px;display:-webkit-box;-webkit-line-clamp:3;-webkit-box-orient:vertical;overflow:hidden}
+      .legion-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:13px}.legion-card{border:1px solid var(--lp-border);border-radius:14px;padding:19px;min-width:0;background:var(--lp-bg)}.legion-card.chosen{border-color:var(--lp-accent);background:var(--lp-card)}.legion-card .legion-title{display:flex;align-items:flex-start;gap:10px}.legion-title>div{min-width:0;flex:1}.legion-card p,.legion-task p,.legion-panel code,.legion-panel a{overflow-wrap:anywhere}.legion-card p.description{color:var(--lp-muted);font-size:13px;display:-webkit-box;-webkit-line-clamp:3;-webkit-box-orient:vertical;overflow:hidden}
       .legion-badges{display:flex;gap:7px;flex-wrap:wrap;margin-top:12px}.legion-badge{font-size:11px;line-height:1.4;padding:4px 7px;background:var(--lp-card);border:1px solid var(--lp-border);border-radius:6px}.legion-badge.good{color:var(--lp-accent)}
       .legion-callout{border-left:3px solid var(--lp-accent);border-radius:4px;background:var(--lp-card);padding:13px 16px;margin:17px 0}.legion-error{border:1px solid var(--dsw-alias-border-l2,#b87566);background:var(--lp-card);border-radius:10px;padding:12px 15px;margin:12px 0;overflow-wrap:anywhere}.legion-empty{background:var(--lp-card);border:1px dashed var(--lp-border);border-radius:14px;padding:29px;color:var(--lp-muted);margin:16px 0}
       .legion-panel a{color:var(--lp-accent);text-decoration:underline;text-underline-offset:3px}.legion-panel code{font-family:ui-monospace,SFMono-Regular,monospace;font-size:12px}.legion-panel details{border-top:1px solid var(--lp-border);padding-top:12px;margin-top:14px}.legion-panel summary{cursor:pointer;font-size:12px;color:var(--lp-muted)}.legion-panel pre{font-size:11px;line-height:1.6;white-space:pre-wrap;overflow-wrap:anywhere;max-height:360px;overflow:auto;background:var(--lp-card);padding:12px;border-radius:8px}
@@ -574,6 +611,26 @@ window.__ModuleLoader__.load({
         : value ? ctx.locale.resolveText(value) : ''
       const Button = ({ children, onClick, disabled, primary, ...props }) =>
         h('button', { type: 'button', onClick, disabled, className: primary ? 'primary' : '', ...props }, children)
+      function TaskReadButton({ children, onClick, busy = false, disabled = false, ...props }) {
+        const blocked = busy || disabled
+        const activationKey = event => {
+          if (event.key !== 'Enter' && event.key !== ' ') return
+          // Let the native button generate one click, not a Host page shortcut.
+          event.stopPropagation()
+          if (blocked || event.repeat) event.preventDefault()
+        }
+        // Keep the user's focus on the same control; never restore it later.
+        return h(Button, { ...props, 'aria-disabled': blocked, 'aria-busy': busy,
+          onKeyDown: activationKey, onKeyUp: activationKey,
+          onClick: event => {
+            if (blocked || event?.defaultPrevented) {
+              event?.preventDefault()
+              event?.stopPropagation()
+              return
+            }
+            return onClick(event)
+          } }, children)
+      }
       const ErrorBox = ({ value }) => value ? h('div', { className: 'legion-error', role: 'alert' }, value) : null
       const Details = ({ value, label }) => value ? h('details', null,
         h('summary', null, label || t('查看来源与原始回执', 'Source and original receipt')),
@@ -607,7 +664,8 @@ window.__ModuleLoader__.load({
             result.pendingBuilds.join(', '), t('。请在 DSH 原生插件页处理。', '. Use the native DSH Plugins page.')) : null,
           h(Details, { value: result }))
       }
-      function TaskObservations({ value, sessionId, download, downloadBusy, downloadError, statusBusy }) {
+      function TaskObservations({ value, sessionId, download, downloadBusy, downloadError, statusBusy, statusStale }) {
+        const notCurrent = statusBusy || statusStale
         const artifacts = artifactFacts(value)
         const artifactPage = value.sections?.artifacts
         const eventPage = value.sections?.events
@@ -622,7 +680,12 @@ window.__ModuleLoader__.load({
         return h('section', { className: 'legion-section' },
           h('div', { className: 'legion-row between' },
             h('h2', null, t('原任务现场', 'Original task observations')),
-            h(Button, { disabled: statusBusy, onClick: () => controller.taskStatus(value.task_ref) }, t('刷新原任务', 'Refresh original task'))),
+            h(TaskReadButton, { busy: statusBusy, onClick: () => controller.taskStatus(value.task_ref) }, t('刷新原任务', 'Refresh original task'))),
+          notCurrent ? h('p', { className: 'legion-help', role: 'status' }, statusBusy
+            ? t('正在读取最新状态；下方保留上次读取结果（非最新），暂不可下载。',
+              'Reading the latest status; previous observations below are not current. Downloads are disabled.')
+            : t('上次读取结果未更新；仅供参考，成功读取原任务后才能下载。',
+              'Previous observations are not updated; reference only. Read the task successfully before downloading.')) : null,
           h('p', { className: 'legion-help' }, t('DSH 会话：', 'DSH session: '), h('code', null, sessionId)),
           h('p', null, t('任务引用：', 'Task reference: '), h('code', null, value.task_ref || unknown)),
           h('p', { className: 'legion-help' }, t('军团任务组：', 'Legion team: '), h('code', null, value.team_id || unknown),
@@ -643,7 +706,9 @@ window.__ModuleLoader__.load({
             t('服务取消标记（非进程核验）：', 'Service cancellation flag (not a process check): '), String(value.runtime.cancelled)) : null,
           h('div', { className: 'legion-callout' },
             h('strong', null, artifacts.complete
-              ? t(`本次已观察到的正式导出记录：${artifacts.observed_count}`, `Observed export records: ${artifacts.observed_count}`)
+              ? notCurrent
+                ? t(`上次读取的成果记录：${artifacts.observed_count}`, `Previously observed artifact records: ${artifacts.observed_count}`)
+                : t(`本次已观察到的成果记录：${artifacts.observed_count}`, `Observed artifact records: ${artifacts.observed_count}`)
               : t('成果清单未完整取得', 'Artifact inventory is incomplete')),
             !artifacts.complete && artifacts.items.length ? h('p', null,
               t(`当前页展示 ${artifacts.items.length} 条已观察记录。`, `Showing ${artifacts.items.length} observed records on this page.`)) : null,
@@ -652,21 +717,41 @@ window.__ModuleLoader__.load({
             h('p', { className: 'legion-help' }, t(
               '同名文件可能有不同 SHA-256 的历史记录，按原记录保留，不合并成“唯一新成品数”。文件与作者 done 都不等于体验已通过。',
               'Same-name files may have historical SHA-256 versions. Records are preserved, not merged into a count of new products. Files and author done are not experience acceptance.'))),
-          ...artifacts.items.map((item, index) => h('article', { className: 'legion-task', key: item.artifact_id || index },
+          ...artifacts.items.map((item, index) => {
+            const savedVersion = typeof item.export_snapshot_id === 'string' && item.export_snapshot_id.trim()
+            // Legacy service receipts have no typed source field. Recognize only
+            // their exact current-file observation; kind/eligibility is not provenance.
+            const legacyFile = !item.export_snapshot_id && item.service_verification === '文件存在、非空且内容哈希已计算'
+            return h('article', { className: 'legion-task', key: item.artifact_id || index },
             h('div', { className: 'legion-row between' }, h('strong', null, item.name || unknown),
-              item.download_eligible === true ? h(Button, { disabled: downloadBusy || statusBusy,
+              item.download_eligible === true ? h(Button, { disabled: downloadBusy || notCurrent,
                 onClick: () => controller.downloadArtifact(value.task_ref, item.artifact_id) }, t('下载文件', 'Download file')) : null),
             h('code', null, item.artifact_id || unknown),
+            h('p', { className: 'legion-help' }, t('记录来源：', 'Record source: '), savedVersion
+              ? t('已保存的交付版本', 'Saved delivery version')
+              : legacyFile
+                ? t('工作目录文件记录（可能随续作变化）', 'Working-directory file record (may change as work continues)')
+                : t('来源未确认', 'Source unconfirmed')),
+            savedVersion ? h('p', { className: 'legion-help' }, t('交付版本 ID：', 'Delivery version ID: '),
+              h('code', null, item.export_snapshot_id)) : null,
+            typeof item.kind === 'string' && item.kind.trim() ? h('p', { className: 'legion-help' },
+              t('服务声明类型：', 'Service-reported kind: '), item.kind) : null,
+            typeof item.service_verification === 'string' && item.service_verification.trim()
+              ? h('p', { className: 'legion-help' }, t('服务观察（非体验验收）：', 'Service observation (not experience acceptance): '),
+                item.service_verification) : null,
             h('p', { className: 'legion-help' }, 'SHA-256: ', item.sha256 || unknown),
             h('p', { className: 'legion-help' }, item.download_eligible === true
-              ? t('可请求下载；正式入口会再次校验归属、字节与哈希。', 'Download may be requested; the native entry rechecks ownership, bytes and hash.')
-              : item.download_reason || t('下载资格未确认。', 'Download eligibility unconfirmed.')))),
-          h('div', { className: 'legion-row' },
-            artifactPage?.offset > 0 ? h(Button, { disabled: statusBusy,
-              onClick: () => controller.taskStatus(value.task_ref, { after_event_id: after }) }, t('返回成果第一页', 'First artifact page')) : null,
-            moreArtifacts ? h(Button, { disabled: statusBusy,
+              ? notCurrent
+                ? t('状态非最新，暂不可下载；请先成功读取原任务。', 'Status is not current; download is disabled until a successful task read.')
+                : t('可请求下载；正式入口会再次校验归属、字节与哈希。', 'Download may be requested; the native entry rechecks ownership, bytes and hash.')
+              : item.download_reason || t('下载资格未确认。', 'Download eligibility unconfirmed.')))
+          }),
+          h('div', { className: 'legion-row', key: 'artifact-pages' },
+            h(TaskReadButton, { busy: statusBusy, disabled: !(artifactPage?.offset > 0),
+              onClick: () => controller.taskStatus(value.task_ref, { after_event_id: after }) }, t('返回成果第一页', 'First artifact page')),
+            h(TaskReadButton, { busy: statusBusy, disabled: !moreArtifacts,
               onClick: () => controller.taskStatus(value.task_ref, { after_event_id: after, artifact_offset: artifactPage.next_offset }) },
-            t('读取下一页成果记录', 'Next artifact page')) : null),
+            t('读取下一页成果记录', 'Next artifact page'))),
           h(ErrorBox, { value: downloadError }),
           download && download.task_ref === value.task_ref ? h('div', { className: 'legion-callout', role: 'status' },
             h('strong', null, t('下载命令回执（文件保存到 DSH 主机）', 'Download command receipt (file saved on the DSH host)')),
@@ -692,8 +777,8 @@ window.__ModuleLoader__.load({
           h('p', { className: 'legion-help' }, t('服务还有更多事件：', 'More service events: '),
             typeof value.more_events === 'boolean' ? String(value.more_events) : unknown,
             ' · ', t('本页续读游标：', 'View continuation cursor: '), eventNext ?? unknown),
-          moreEvents ? h(Button, { disabled: statusBusy,
-            onClick: () => controller.taskStatus(value.task_ref, { after_event_id: eventNext }) }, t('读取后续事件', 'Read later events')) : null,
+          h(TaskReadButton, { key: 'event-page', busy: statusBusy, disabled: !moreEvents,
+            onClick: () => controller.taskStatus(value.task_ref, { after_event_id: eventNext }) }, t('读取后续事件', 'Read later events')),
           h('p', { className: 'legion-help' }, t('更多进度可在原会话查看：', 'For more progress use the original conversation: '),
             h('code', null, `/legion status ${value.task_ref} ${after}`)),
           h(Details, { value, label: t('查看脱敏摘要、来源与分区截断事实', 'Redacted summary, sources and section truncation facts') }))
@@ -1052,7 +1137,8 @@ window.__ModuleLoader__.load({
             'aria-label': t('原任务状态', 'Original task status'), 'aria-busy': busy('taskStatus') },
             error('taskStatus'), status('taskStatus'),
             state.taskStatus && h(TaskObservations, { value: state.taskStatus, sessionId: state.sessionId,
-              download: state.download, downloadBusy: busy('download'), downloadError: state.errors.download, statusBusy: busy('taskStatus') })))
+              download: state.download, downloadBusy: busy('download'), downloadError: state.errors.download,
+              statusBusy: busy('taskStatus'), statusStale: state.taskStatusStale })))
 
         const renderConfig = () => h(React.Fragment, null,
           h('div', { className: 'legion-row between' }, h('h2', null, t('连接你自己的军团核心', 'Connect your own Legion core')),

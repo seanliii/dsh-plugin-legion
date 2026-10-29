@@ -1,18 +1,16 @@
 # Installation and publication / 安装与发布路线
 
-当前是否已发布、实装或收录，只以[状态表](PLAN.md)为准。以下是操作路线和模板，不是完成声明。
+本页提供 **0.4.1** 的固定版本安装入口；详细操作范围、封包验证和历史证据见[状态表](PLAN.md)。程序发布、安装、启用和目录审核分别记账。
 
-**本次连接器发行版本为 0.4.0，走 Git/tag，不做 npm publish。** 2026-10-29 的私有回执已记录原生工作台配置与成员选择、发现能力、原生开关，以及正式导出 TGZ 安装后的真实工具调用；不再把这些已验项写成“UI／Marked 未验”。公开连接器发布已获授权；最终标签读回、固定版本公开安装、最新任务状态定位增量与最终回归分别记录，不由上述本地结果代替。私有核心仍为 `private-local-only`，不在公开范围内。
+**本版安装目标为 `github:seanliii/dsh-plugin-legion#v0.4.1`，采用 Git/tag，不是 npm publish。** 标签发布后使用下方命令；封包时的验证不等于最终公开提交匿名新装已通过，后续结果见[仓库 main 的版本记录](https://github.com/seanliii/dsh-plugin-legion/blob/main/docs/PLAN.md#v041)与 [Release](https://github.com/seanliii/dsh-plugin-legion/releases)。私有核心为 `private-local-only`，不在公开范围内，也没有公共下载版本。
 
-**0.4.0 uses Git/tag distribution, not npm publish.** October 29 private receipts cover workbench settings and member selection, discovery, native switches, and real tool calls after installing a formally exported TGZ. Connector publication is authorized. Final tag readback, installation from the public fixed version, the latest task-status positioning change and final regression are tracked separately and are not declared passed here; local acceptance does not establish those results. The private core remains `private-local-only` and is excluded.
-
-**发布前读回快照（2026-10-29，主线程核对）：** `origin/main` 仍为 `b749f7c0d324b0a4ef0d66611c1c57a8623b2774`，当时尚无 `v0.4.0` 标签；社区 PR #740 已合并。这个发布前快照不预报推送成功，也不覆盖随后发布结果。**固定版本公开安装回执随本次发布记录单列。**
+**The versioned installation target is `github:seanliii/dsh-plugin-legion#v0.4.1`, via Git/tag rather than npm.** Use it once the tag is published. Packaging-time checks do not establish a successful anonymous installation of the final public commit; follow-up receipts belong in the repository's `main` documentation and Release. The separate private core is excluded and has no public download release.
 
 ## 分清三种分发方式
 
 | 路线 | 提供什么 | npm 是否必需 |
 |---|---|---|
-| 官方 CLI 固定 Git 标签／提交 | 使用 `v0.4.0` 或已审查的完整提交手动安装，不是市场收录。 | 不要求将此包发布到 npm；依赖获取仍可能联网。 |
+| 官方 CLI 固定 Git 提交／标签 | 本版使用 `v0.4.1`；发布后也可用版本记录中的完整程序提交复现，不是市场收录。 | 不要求将此包发布到 npm；依赖获取仍可能联网。 |
 | 官方 Discover 自托管索引 | 用户添加可信索引，安装其中声明的 Git 来源。 | Git 来源不要求此包先发 npm。 |
 | 社区目录／1024Store | 提交一份目录 JSON；无 npm 可 **browse-only（仅浏览仓库）** 收录。 | 不是投稿前提；一键安装以商店实际提供的方式为准。 |
 
@@ -20,30 +18,54 @@
 
 ## 固定 Git 安装
 
+<a id="v041"></a>
+
+### v0.4.1：本版安装入口
+
+要求 **Node.js >=24.9.0** 和官方 npm DSH **`0.2.1-rc.2`**。`web` 是示例 profile，换成你自己的名称，保留 `-w`：
+
+```sh
+dsh plugin --profile web -w add 'github:seanliii/dsh-plugin-legion#v0.4.1'
+```
+
+此命令以已经公开的固定标签为前提；标签尚不可取得时，不自动改装 `main` 或旧版本。安装完成后仍需在 **DSH 原生插件页明确启用连接器**。依赖下载可能联网；权限、警告与重启要求以实际安装回执为准，不借历史版本的结果代替。
+
+### 发行代码与后续验证记录
+
+最终程序提交记为 **R**：R 与 `v0.4.1` **原子公开**，标签永久指向 R。随后在全新环境中，匿名按 **R 的完整 40 位 SHA** 安装并核对字节；结果再由独立的纯文档 **B 提交**补入仓库 `main` 与 Release。B 不改变 R 的程序字节，也不移动 `v0.4.1` 或旧标签；封包文档不自引用尚未生成的自身提交 SHA。
+
+**封包时没有上述公开 SHA 匿名新装的成功回执。** 已有本地候选验证、最终发行包身份、实际发布与发布后新装是不同事实；后续状态见[仓库 main 的版本记录](https://github.com/seanliii/dsh-plugin-legion/blob/main/docs/PLAN.md#v041)与 [Release](https://github.com/seanliii/dsh-plugin-legion/releases)，不以旧 0.4.0 回执代替。
+
 <a id="planned-v040"></a>
 <a id="v040"></a>
 
 ### 固定版本 v0.4.0 / Fixed version v0.4.0
 
-**安装前核对公开标签及发布记录中的已审查提交。** 标签可用性和公开安装结果以本次发布回执为准，下面的命令本身不是成功证明。`web` 是示例 profile，换成你自己的名称；保留 `-w`：
+**以下仅为 0.4.0 历史安装记录；本版入口是上方的 v0.4.1。**
+
+**0.4.0 固定发行记录（2026-10-29）：** 程序提交为 **`42dc33e34f22ce94a6379fe829bc75abbad09bf0`**；annotated tag `v0.4.0` 的对象为 `d1c95da1e7acec818c6b3dd00498db97144ac846`，指向该程序提交。后续说明不改写该标签的程序字节，**不移动 `v0.4.0`**；该次发行未另建 GitHub Release。首次目录 PR #740 已合并；截至该日，新版说明 [PR #748](https://github.com/imsai-sh/awesome-deepseek-harness-plugins/pull/748) 已通过静态检查，仍待维护者审核。
+
+要求 **Node.js >=24.9.0** 和官方 npm DSH **`0.2.1-rc.2`**。下面固定到已经审查、匿名新装成功的完整公开提交。`web` 是示例 profile，换成你自己的名称；保留 `-w`：
+
+```sh
+dsh plugin --profile web -w add 'github:seanliii/dsh-plugin-legion#42dc33e34f22ce94a6379fe829bc75abbad09bf0'
+```
+
+这是公开 Git 安装，不是 `npm install dsh-plugin-legion@0.4.0`，也不是商店的一键安装。**装完后还需到 DSH 原生插件页明确启用连接器**。依赖下载可能联网；实装退出 0，但有 pnpm peer dependency warning，不能说零警告。
+
+Use **Node.js >=24.9.0** and DSH **0.2.1-rc.2**. The full commit above was installed anonymously and read back successfully. Replace the example `web` profile as needed, but retain `-w`. **Explicitly enable the connector in DSH Plugins after installation.** The installation retained a pnpm peer-dependency warning. This is Git installation, not an npm release or a marketplace install button.
+
+### 标签与固定字节 / Tag and pinned bytes
+
+若选择标签，`v0.4.0` 已核对指向上述完整提交；严格复现仍优先完整 SHA。本次不移动该标签：
 
 ```sh
 dsh plugin --profile web -w add 'github:seanliii/dsh-plugin-legion#v0.4.0'
 ```
 
-这是公开 Git 标签安装，不是 `npm install dsh-plugin-legion@0.4.0`，也不是已经有“一键市场安装”的证明。Git 标签可以移动；严格复现优先下方完整 commit SHA。依赖下载仍可能联网。
+公开提交已包含可运行 JavaScript、`package.json` 和 `dsh.bundle.patch` 指向的 patch 文件，不依赖另行补入构建产物。标签安装中的说明仍是该代码提交的版本；之后的文档提交可以补充已存在的代码 SHA 与安装回执，不反写或移动发行字节。
 
-**Check the public tag against the reviewed commit in the release record before installing.** Availability and public-installation results belong to that record; the command is not a success receipt. Replace the example `web` profile as needed, but retain `-w`. This installs from Git, not an npm release or a proven marketplace button. Tags can move; use a reviewed full commit for reproducibility. Dependencies may still require network access.
-
-### 已核完整提交 / Reviewed full commit
-
-**先有真实公开仓库和经过审查的提交，再使用此模板。** 将占位符换为实际公开的完整 40 位 SHA，并选择自己的 profile：
-
-```sh
-dsh plugin --profile web -w add 'github:seanliii/dsh-plugin-legion#<PUBLIC_FULL_COMMIT_SHA>'
-```
-
-保留 `-w`。提交中必须已有可运行 JavaScript、`package.json` 和 `dsh.bundle.patch` 指向的 patch 文件；不能依赖缺失的构建产物。模板中的目标地址不是“仓库已发布”的证明。
+该版本的逐文件核对、浏览器操作、GitHub 限流与恢复、无核心新装范围均保留在 [2026-10-29 公开新装验收](PLAN.md#固定公开提交的新装验收2026-10-29)，不作为 0.4.1 重跑或发布的证明。
 
 已有本地副本或 `legion_bundle` 生成包时，使用[原生本地安装](ECOSYSTEM.md#native-installation)：`target` 为 `file:` 加绝对目录或受支持的本地安装包路径，请求 `enabled:false`。这表示新包不自动选择启用，**更新保留已有开关，不会强制停用**；不希望更新后运行时，先停用对应能力包再更新。本地安装与公开发布是不同操作。
 
@@ -72,32 +94,36 @@ Check actual bundle/plugin loading state in **DSH Plugins**, then open **Legion*
 
 索引需以可匿名直接读取、无跳转的静态 JSON 提供；时间填真实发布时间，不编造索引地址或发布记录。兼容声明应与包的 `engines.dsh: "0.2.1-rc.2"` 一致。索引读取与实际 Git 安装分别验证。
 
-## 社区目录：只提交一份 JSON
+## 社区目录：更新已有的一份 JSON
 
-目标为 [imsai-sh/awesome-deepseek-harness-plugins](https://github.com/imsai-sh/awesome-deepseek-harness-plugins) 的 `main`，不是姐妹站源码仓库。按下方固定规则快照：
+目标为 [imsai-sh/awesome-deepseek-harness-plugins](https://github.com/imsai-sh/awesome-deepseek-harness-plugins) 的 `main`，不是姐妹站源码仓库。以下保留 **2026-10-29 已有投稿**的操作与结果，基于 `d87de872b119a9e058f5b619f71e9fac8eebfb83`，只更新已收录条目的双语说明，不代表已为 0.4.1 新建投稿：
 
 1. 公开仓库同一 revision 必须包含声明 `dsh.bundle.patch` 的清单及对应 patch；作者自行测试实际兼容性，并添加 `dsh-plugin` topic。
-2. 只新增 `catalog/plugins/seanliii--dsh-plugin-legion.json`；不得同时改生成 README、workflow 或脚本。
-3. 严格保留七字段，双语描述客观具体，`added` 填**实际投稿日**。下面只是结构模板，日期占位符不能直接投稿：
+2. 只修改 `catalog/plugins/seanliii--dsh-plugin-legion.json`；不重复新增，不同时改生成 README、workflow 或脚本。
+3. 严格保留七字段和条目身份；`added` 保留首次投稿日 **2026-10-28**，不改为版本更新日。以下为本次已提交内容：
 
 ```json
 {
   "$schema": "../schema/plugin.schema.json",
   "id": "seanliii/dsh-plugin-legion",
-  "name": "Legion Bridge",
+  "name": "dsh-plugin-legion",
   "repository": "https://github.com/seanliii/dsh-plugin-legion",
   "category": "tools",
   "description": {
-    "en": "A native DSH workbench for member preferences, tool and Skill discovery, public GitHub source, explicit native bundle management, and optional integration tasks through a personal Legion service.",
-    "zh": "DSH 原生军团工作台：选择成员、查找工具与 Skill、搜索公开 GitHub、明确安装与开关原生能力包，并可选委托个人 Legion 服务接入能力。"
+    "en": "A five-page native DSH workbench for selecting Legion members, finding session tools and Skills, searching configured plugin markets and public GitHub, and explicitly installing or switching native capability bundles. Delegates source adaptation and collaboration to a separately configured, user-authorized Legion core; the core and external harnesses are not bundled.",
+    "zh": "DSH 原生五页工作台：选择军团成员、查找当前会话工具与 Skill、搜索已配置插件市场和公开 GitHub，明确安装或启停原生能力包；可委托另行配置并获授权的军团核心适配源码和协作，不捆绑核心或外部 Harness。"
   },
-  "added": "<YYYY-MM-DD>"
+  "added": "2026-10-28"
 }
 ```
 
 不要额外添加 `source`、`npm`、SHA 或 `rights` 字段，`repository` 保持仓库根 URL。目录元数据贡献采用 **CC0-1.0**，该目录的代码贡献采用 MIT；这不重新许可外部插件。连接器的 MIT 声明也不是上游分发权保证。
 
-目录仓库的 `npm run plugin:review` 对应 `scripts/review-plugin-submission.mjs`；完整审查还需要 PR/base/head 和 GitHub API 上下文，单独解析 JSON 不等于它已通过。非 draft、仅新增一条且通过 `Plugin submission review / static-review` 的 PR，在此快照的流程中会自动 squash merge；更新或删除需维护者审阅。已有目录条目时不能重复新增；PR #740 的合并与本次版本更新分别记账，上方 0.4.0 描述模板不表示现有目录已同步更新。
+**本次投稿 [PR #748](https://github.com/imsai-sh/awesome-deepseek-harness-plugins/pull/748)**，提交 `d514169653bf3b74a7742ee1978d26bbdfecab09`。本地调用上游条目和差异验证器，结果为 `manual-review`；验证器未变，复用其 6 组共 **99 项通过**记录。GitHub 的 `static-review` 已成功，`merge` 为 **SKIPPED**；Codex Review 已完成且未报告发现。**截至 2026-10-29，PR 仍为 OPEN，需维护者手动审核，不是新版已收录。**
+
+目录仓库的 `npm run plugin:review` 对应 `scripts/review-plugin-submission.mjs`；完整审查还需要 PR/base/head 和 GitHub API 上下文，单独解析 JSON 不等于通过。非 draft、仅新增一条且通过静态检查的投稿可自动合并；本次是更新已有条目，不能走新增自动合并。首次 PR #740 的合并与本次更新分别记账。
+
+机器人回执确认：没有 npm 包时，1024Store 对该插件为 **browse-only**，展示仓库链接但不提供安装命令。这不妨碍上方固定 Git 安装，也不表示已经验证了新版商店页面。
 
 审查只检查材料和必要文件，不安装、构建、执行或评判第三方代码。发布、提交 PR、检查通过、合并、网站收录与真实安装分别确认。公开 Git 仓库可以满足无 npm 投稿的来源条件，**不是只要 push 就自动收录**。
 
@@ -109,8 +135,8 @@ Check actual bundle/plugin loading state in **DSH Plugins**, then open **Legion*
 
 ## 已核规则出处
 
-本页复用固定源码，不声称本轮重新抓取了线上规则或验证了商店界面。正式投稿前只需复核届时差异：
+2026-10-29 投稿前已取得当时的目录基线并核对差异，验证器、schema 和规则未变。以下依据对应那次提交基线；姐妹站和官方参考仍为已保存的固定源码，不声称本轮重新核对了线上规则或商店界面：
 
-- 社区目录 `50684e4cde55722da7c6d19cf771b7e412b44ae2`：[CONTRIBUTING](https://github.com/imsai-sh/awesome-deepseek-harness-plugins/blob/50684e4cde55722da7c6d19cf771b7e412b44ae2/CONTRIBUTING.md)、[schema](https://github.com/imsai-sh/awesome-deepseek-harness-plugins/blob/50684e4cde55722da7c6d19cf771b7e412b44ae2/catalog/schema/plugin.schema.json)、[review workflow](https://github.com/imsai-sh/awesome-deepseek-harness-plugins/blob/50684e4cde55722da7c6d19cf771b7e412b44ae2/.github/workflows/plugin-review.yml)。CONTRIBUTING blob：`40a6acc056484b3b315a5df37cce92a75fcc35d4`。
+- 社区目录 `d87de872b119a9e058f5b619f71e9fac8eebfb83`：[CONTRIBUTING](https://github.com/imsai-sh/awesome-deepseek-harness-plugins/blob/d87de872b119a9e058f5b619f71e9fac8eebfb83/CONTRIBUTING.md)、[schema](https://github.com/imsai-sh/awesome-deepseek-harness-plugins/blob/d87de872b119a9e058f5b619f71e9fac8eebfb83/catalog/schema/plugin.schema.json)、[review workflow](https://github.com/imsai-sh/awesome-deepseek-harness-plugins/blob/d87de872b119a9e058f5b619f71e9fac8eebfb83/.github/workflows/plugin-review.yml)。CONTRIBUTING blob：`40a6acc056484b3b315a5df37cce92a75fcc35d4`。
 - 姐妹站 `0061a79c02c4f1cdcb9ba22f5b4b7c63220f65e9`：[安装方法](https://github.com/imsai-sh/dsh-1024store/blob/0061a79c02c4f1cdcb9ba22f5b4b7c63220f65e9/web/worker/lib/install-methods.ts)、[原生命令分支](https://github.com/imsai-sh/dsh-1024store/blob/0061a79c02c4f1cdcb9ba22f5b4b7c63220f65e9/plugin/src/routes.ts)。
 - 官方参考快照：[包发布](https://github.com/deepseek-ai/deepseek-harness/blob/22ddee3792402c3e70ec5f86a63c3e3e895a2f60/docs/user/develop/basic/publish.md)、[市场索引](https://github.com/deepseek-ai/deepseek-harness/blob/22ddee3792402c3e70ec5f86a63c3e3e895a2f60/docs/user/guide/plugin-market.md)。该源码快照含较新开发元数据；本插件运行契约以安装的 **npm rc.2** 为准。
