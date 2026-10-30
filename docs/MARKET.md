@@ -164,6 +164,13 @@ In DSH: **Plugins → More under Experimental plugins → enable Custom plugin m
 
 ## 社区目录：更新已有的一份 JSON
 
+**当前 0.5.0 更新已经提交到既有 PR #748**，head
+`7a0bd6e61ea0f04fbf068dec03749899c47e4195`。标题、正文和同一目录 JSON 均已保存并读回；
+`static-review` 成功、`merge` 跳过，仍等待维护者审核。只改已有条目的双语介绍，
+保留七字段和首次 `added`。这项等待不阻塞公开 Git／Release／Discover 安装。
+
+**以下 0.4.2 及更早段落是历史提交记录，不是当前 PR 的版本或 head：**
+
 目标为 [imsai-sh/awesome-deepseek-harness-plugins](https://github.com/imsai-sh/awesome-deepseek-harness-plugins) 的 `main`，不是姐妹站源码仓库。**0.4.2 已沿 PR #748 更新目录文件，head 为 `6cdd674519613ff40a7da02b2ecd9962af70fe1d`，仍 OPEN、未合入。** 仅改原条目的双语说明，保留七字段与首次投稿日；本地校验为 `manual-review`。[同 head 的工作流 40994405430](https://github.com/imsai-sh/awesome-deepseek-harness-plugins/actions/runs/40994405430)中 `static-review=success`、`merge=skipped`。投稿文件更新、描述表单提交、维护者合入和商店收录分开记录。
 
 **2026-10-30 12:33:40（Asia/Shanghai）已更新 PR 标题／正文为 0.4.2。** 用户确认后从 GitHub 原生页面分别保存，刷新和 API 读回的正文与获准稿一致；只更新说明，未合并代码。此前工具只渲染交互表单的状态保留在私有诊断记录，不再作为待办。以下保留 0.4.1 的历史条目与回执，不挪给新版：
