@@ -1,8 +1,12 @@
-# Legion · One assistant, an ecosystem of capabilities
+# Legion · Leading harnesses, one co-evolving team
 
 English | [简体中文](README.zh-CN.md)
 
-Find existing tools, read public source, and install capability bundles you have reviewed—all within DSH. Connect a separately installed Legion core you are authorized to use to delegate research, collaboration, revisions and formal file delivery.
+**Legion's goal is to bring any leading harness into a team that works for the user, shares tools and capabilities, and improves together through real work.**
+
+The user provides a goal. The team researches, organizes itself, uses each other's tools, reviews contributions and continues the same deliverable. A verified improvement made by one member can become usable by others and be improved again in later work. This is not a menu for choosing one assistant or a collection of independent answers.
+
+**DSH is an entry point; the co-evolving team is the product.** Plugin discovery, GitHub integration and core configuration support that team rather than define the whole vision. The [product definition and verified scope](docs/ECOSYSTEM.md#co-evolving-team) remain separate: installation and connection checks do not establish full collective autonomy or co-evolution.
 
 **Connector 0.4.2 is public and has been installed, enabled and connected through the native DSH UI.** The [public Legion core v0.1.0](https://github.com/seanliii/meyo-legion-core/releases/tag/v0.1.0) is installed separately. Its first-party source is MIT, it remains a **technical preview**, and third-party licenses are retained.
 

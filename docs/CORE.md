@@ -1,6 +1,8 @@
-# 军团核心：不是只接一个壳
+# 军团核心：承载顶尖 Harness 的协同进化战队
 
-想象 DSH 是你的工作台，军团是能接任务的团队，各家 Harness 和工具是团队能使用的专长。连接器负责把它们接通，**不是把所有人的代码压成一个巨型插件，也不是登记一个名字就假装获得了能力。**
+**军团的主体是 Harness 战队，不是工具菜单。** 目标是让任何顶尖 Harness 保留自己的能力加入团队，共同为用户工作，开放工具与接口，互相学习和改进。DSH 是工作入口，核心负责运行、连接、恢复与事实传递；成员自己组织、实施与进化。[完整产品定义](ECOSYSTEM.md#co-evolving-team)不应被当前已验证的单成员安装路径缩小。
+
+下表的三层是分发与运行结构，不是“只接上核心就实现战队”的完成判据。实际协作、开放工具互用以及改进被其他成员采用，仍要分别有真实任务证据。
 
 **新用户先做：** [下载公开核心 v0.1.0 并建立实例](#public-core-install)，启动后将 `dsh-config` 输出的地址与凭据引用保存到 DSH 插件。v0.1.0 是已发布的技术预览，核心不随连接器打包。
 
@@ -23,10 +25,10 @@
 | 先理解人想得到什么 | `release/legion-service/quality_context.py`、`legion_core.py` | 保留原始需求、意图与作品上下文，不把一句话缩成工具关键字。 |
 | 看世界上的好东西，再决定怎么做 | `research_pipeline.py`、`quality_context.py` | 研究入口与来源事实可进入当单上下文；URL、正文与失败状态各有意义，不是搜索返回成功就算做过研究。 |
 | 小而完整、真正有用的首个作品 | `quality_context.py`、`legion_core.py` | 保留完整纵切的上下文；范围、媒介和验收由当单需求决定，不硬编码游戏、PPT或网站答案。 |
-| 最合适的成员协作，不是每题全家上 | `legion_core.py`、`collaboration_runtime.py` | 复用原有派单和协作。新个人实例默认先用已显式配置的 Codex；这不是所有成员自动获权。 |
+| 顶尖 Harness 作为战队成员共同工作 | `legion_core.py`、`collaboration_runtime.py` | 复用原有派单、协作和成员身份。新个人实例已验的 Codex 配置路径只是当前入口，不是产品固定队长、唯一成员或完整战队验收。 |
 | 接力不能失忆 | `team_state.py`、`task_memory.py`、原生成员 checkpoint | 原任务、工程和已知事实随合法续作保留；不复制旧 UUID 或权限冒充新身份。 |
 | 出问题自己看到并返工 | 原执行器、协作事件与 `legion_core.py` | 工具结果、运行错误、当前产物和反馈回到工作现场。保留续作能力不保证每次模型都能自主修好。 |
-| 大家互学，不靠投票拼答案 | `delivery_knowledge.py` | 历史案例先提供索引，按当单选择再展开；记录存在、成功召回和真的被模型采用仍是不同证据。 |
+| 共同进化，不止保存经验 | `source_audit.py`、`delivery_knowledge.py` | 原源码审核和经验入口可承接部分工作；目标是实际改进、复验、共享并被其他成员采用，不能把索引存在或一份审核记录说成整条循环已完成。 |
 | 做出来还必须交得出来 | `project_context.py`、`artifact_delivery.py`、`artifact_store.py` | 合法工程身份、允许导出范围、实际文件与正式清单相接。运行 `done` 不能替代正式导出。 |
 | 生态按需扩展 | `runtime_manifest.py`、`external_agent_registry.py`、`harness_onboard.py` | 原成员目录、安装和探测入口保留，实际安装与运行各自核对。 |
 | 不止写文字，也能操作工具和设备 | `capstack_bridge.py`、共享工具总线、`cloud_desktop.py`、`agentbay_mobile.py` | 媒体和设备沿原能力入口接入；仍需要真实软件、模型、账号与明确授权。 |
