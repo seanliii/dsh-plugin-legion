@@ -140,7 +140,7 @@ In DSH: **Plugins → More under Experimental plugins → enable Custom plugin m
 
 目标为 [imsai-sh/awesome-deepseek-harness-plugins](https://github.com/imsai-sh/awesome-deepseek-harness-plugins) 的 `main`，不是姐妹站源码仓库。**0.4.2 已沿 PR #748 更新目录文件，head 为 `6cdd674519613ff40a7da02b2ecd9962af70fe1d`，仍 OPEN、未合入。** 仅改原条目的双语说明，保留七字段与首次投稿日；本地校验为 `manual-review`。[同 head 的工作流 40994405430](https://github.com/imsai-sh/awesome-deepseek-harness-plugins/actions/runs/40994405430)中 `static-review=success`、`merge=skipped`。投稿文件更新、描述表单提交、维护者合入和商店收录分开记录。
 
-本次读回时 PR 标题／正文仍为旧 0.4.1 说明；新版说明已准备在 GitHub 工具的确认表单中，**未取得提交成功回执，不声称已更新正文**。这不影响已公开的源码、Release 或 Discover 安装。以下保留 0.4.1 的历史条目与回执，不挪给新版：
+**2026-10-30 12:33:40（Asia/Shanghai）已更新 PR 标题／正文为 0.4.2。** 用户确认后从 GitHub 原生页面分别保存，刷新和 API 读回的正文与获准稿一致；只更新说明，未合并代码。此前工具只渲染交互表单的状态保留在私有诊断记录，不再作为待办。以下保留 0.4.1 的历史条目与回执，不挪给新版：
 
 1. 公开仓库同一 revision 必须包含声明 `dsh.bundle.patch` 的清单及对应 patch；作者自行测试实际兼容性，并添加 `dsh-plugin` topic。
 2. 只修改 `catalog/plugins/seanliii--dsh-plugin-legion.json`；不重复新增，不同时改生成 README、workflow 或脚本。
@@ -178,6 +178,12 @@ In DSH: **Plugins → More under Experimental plugins → enable Custom plugin m
 连接器只分发自身程序、合法依赖声明、许可和公开文档；已公开的核心 v0.1.0 **不随连接器打包**。第一方核心、选定 auto-tools、打包器与文档以 MIT 公开，第三方许可保留；新包字段见[公开格式](CORE.md#public-core-next-steps)，旧 `private-local-only` 归档与证据保持不变。不包含用户数据、私有证据／日志／凭据、公司大仓及其私有历史、无关业务、第三方上游全量源码、模型权重或另行生成的 Marked 验收包。最终 Git tree、包内链接与打包文件名单须与真正发布的字节一致；发布授权不等于所有成员已安装、无人自治或行业普遍领先。
 
 `npm whoami` 的已提供实查结果为 **`ENEEDAUTH`**；0.4.2 继续 Git 分发，本次不执行 npm publish，也不把未登录表述成已发布。若以后另行选择 npm，仍需实际包名与发布权限，发布后核对包内容和商店实际提供的安装目标，不能由 registry 条目推断同步完成。
+
+## 可复用的维护技能
+
+[legion-dsh-release](../skills/legion-dsh-release/SKILL.md) 保存这条项目的发布、部署与验收方法，三份参考分别覆盖固定源码／市场投稿、独立服务／动态后端／静态站路由、原生操作／截图录屏／正式交付。让支持 Agent Skills 的开发代理按其发现方式加载该目录即可使用；不会因此自动获得账号、工具执行或公开发布权限。
+
+技能源在本仓库 `skills/legion-dsh-release/`。它是后续独立提交，不改写已经冻结的 0.4.2 TGZ 或旧标签，也不声称该旧安装包已经自动装载新技能。版本身份与运行结果继续在 [PLAN](PLAN.md) 分开记录。
 
 ## 已核规则出处
 
