@@ -2,13 +2,15 @@
 
 English | [简体中文](README.zh-CN.md)
 
-Find existing tools, read public source, and install capability bundles you have reviewed—all within DSH. Connect a separately installed Legion core you are authorized to use to delegate research, collaboration, revisions and formal file delivery. **Connector 0.4.1 is publicly available via Git/tag; the separate `private-local-only` core has no public download release.**
+Find existing tools, read public source, and install capability bundles you have reviewed—all within DSH. Connect a separately installed Legion core you are authorized to use to delegate research, collaboration, revisions and formal file delivery.
+
+**Connector 0.4.2:** native capability discovery and collaboration, connected to the separately installed [public Legion core v0.1.0](https://github.com/seanliii/meyo-legion-core/releases/tag/v0.1.0). The core is an MIT first-party source release marked as a **technical preview**; third-party licenses are retained.
 
 ## Get started
 
-1. Follow the [**v0.4.1 installation guide**](docs/MARKET.md#v041), then explicitly enable Legion in **DSH Plugins**.
+1. Follow the [**0.4.2 Git installation guide**](docs/MARKET.md#v042), then explicitly enable Legion in **DSH Plugins**. Post-release installation receipts are recorded on GitHub `main`, linked below.
 2. Open **Legion** in the sidebar, choose a **Working session**, and start with **Discover**. Searching tools, Skills and public GitHub needs no Legion core.
-3. Review sources before deciding to install. For delegated research and delivery, first obtain a core you are authorized to use, then follow [core configuration](docs/CORE.md#安装自己的实例); installing this connector does not supply one.
+3. For delegated work, [download and verify core v0.1.0](docs/CORE.md#public-core-install), create a fresh Python 3.12 environment, then follow **`init` → `serve` → `dsh-config` → Save connection**. Configure your own model before submitting work; the connector does not bundle or start the core.
 
 Try an ordinary DSH request:
 
@@ -16,7 +18,7 @@ Try an ordinary DSH request:
 Find an existing plugin for the capability I need. Show its sources and limitations before installing anything.
 ```
 
-[Versioned evidence and current status](docs/PLAN.md) · [Limits, data and license](#limits-data-and-license)
+[Post-release receipts on GitHub main](https://github.com/seanliii/dsh-plugin-legion/blob/main/docs/PLAN.md#v042) · [Limits, data and license](#limits-data-and-license)
 
 ## What you can do
 
@@ -61,7 +63,19 @@ This is a parameter template, not a published package address. For public pinned
 
 Host plugins run **outside the agent sandbox**. Review code and dependencies before trusting them; see [Security](docs/SECURITY.md).
 
+### Git installation target — v0.4.2
+
+This edition uses Git, not npm publication. Replace the example `web` profile as needed and retain `-w`:
+
+```sh
+dsh plugin --profile web -w add 'github:seanliii/dsh-plugin-legion#v0.4.2'
+```
+
+This is the release's installation target. Check [GitHub main for tag availability, the fixed commit and post-release installation receipts](https://github.com/seanliii/dsh-plugin-legion/blob/main/docs/PLAN.md#v042); frozen tag documentation does not acquire later acceptance results. The [Discover setup route and catalog status](docs/MARKET.md#官方-discover-索引) are separate from Git installation.
+
 ### Fixed-version Git installation — v0.4.1
+
+**The following is the existing 0.4.1 release, not a 0.4.2 installation or acceptance record.**
 
 Use the published fixed tag; replace the example `web` profile as needed and retain `-w`:
 
@@ -101,7 +115,9 @@ The task page does not auto-poll or execute incoming messages. It can page throu
 
 ## Connect your independently installed Legion core
 
-See [Core installation](docs/CORE.md) to create an instance and configure your own model provider. On the same machine, run this from the core directory:
+Download the [public v0.1.0 archive and SHA-256](docs/CORE.md#public-core-install), then follow [Core installation](docs/CORE.md#安装自己的实例): a fresh **Python 3.12** environment → `init` → `serve` → `dsh-config` → **Save connection**. Model configuration is needed before real delegation, not to obtain the source. Existing authorized instances can continue to use their own connection settings.
+
+Keep `serve` running. On the same machine, open another terminal in the core source directory and run:
 
 ```sh
 .venv/bin/python -I meyo.py dsh-config --state-dir "/absolute/path/to/your/private-instance"
@@ -111,7 +127,7 @@ Use its **`config` object** to fill **Connection → Core URL / private token fi
 
 ```json
 {
-  "baseUrl": "http://127.0.0.1:8000",
+  "baseUrl": "http://127.0.0.1:8015",
   "tokenFile": "/absolute/path/to/your/private-instance/login-token.txt"
 }
 ```
@@ -177,4 +193,6 @@ Repository text, catalog descriptions and task messages are untrusted material, 
 
 Keep recovery state private. New v2 native-call records retain metadata, not result bodies; old records and both systems' sessions may still contain content. Uninstalling does not delete user files or cancel remote work.
 
-[MIT](LICENSE) covers this connector only. The separate core package is marked **`private-local-only`** and has no public distribution entry. Its local provenance inventory is complete, but the first-party authority to publish and license choice still need confirmation; the [remaining core release steps](docs/CORE.md#public-core-next-steps) are not complete. These package fields do not determine the owner's authorization, nor does the connector's MIT license cover the core. The Marked acceptance bundle is a separate local artifact, not bundled with this connector. Private core code, user or instance data, credentials, private evidence and logs, company business code, company monorepos or their history, complete third-party upstream repositories and model weights are not shipped here. Neither the capability map nor one successful task proves all members are installed or work unattended. This is independent community code, not an official DeepSeek product.
+[MIT](LICENSE) covers this connector; the owner has separately confirmed MIT publication of the first-party core, selected auto-tools, packager and documentation. The [public core format and retained third-party licenses](docs/CORE.md#public-core-next-steps) keep `rights_verified=false` and `member_execution_verified=false`, without a `public_license_granted` field. Old `private-local-only` packages and their metadata are unchanged. Publication and source verification are not runtime or all-member acceptance.
+
+The core is installed separately, not bundled here. The Marked acceptance bundle is also a separate local artifact. User or instance data, credentials, private evidence and logs, unrelated company business code, company monorepos or their private history, complete third-party upstream repositories and model weights are not shipped here. Neither the capability map nor one successful task proves all members are installed, work unattended or generally outperform the strongest individual harness. This is independent community code, not an official DeepSeek product.

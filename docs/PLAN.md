@@ -1,10 +1,34 @@
 # 发布与验收状态
 
-本页先列 **0.4.1 固定公开提交的新装回执与封包记录**，再保留 **2026-10-28 至 2026-10-29（Asia/Shanghai）** 的既有验收与发布记录。目录收录、安装、真实调用和完整作品不是同一件事；更新说明的时间不算重新验收。
+本页先列 **0.4.2 本版发行范围与封包前事实**，再保留 **0.4.1 固定公开提交的新装回执与封包记录**，以及 **2026-10-28 至 2026-10-29（Asia/Shanghai）** 的既有记录。**发布后的回执更新在 [GitHub main 的本节](https://github.com/seanliii/dsh-plugin-legion/blob/main/docs/PLAN.md#v042)**；固定 tag／发行包内的文档不追加尚未发生的验收，也不移动旧标签。
 
 目标是：DSH 用户入口 → 可独立安装的军团核心 → 按需安装的成员、工具、媒体和设备。不是只提供一篇理念介绍，也不是把整个公司大仓上传。
 
 <a id="current-release"></a>
+<a id="v042"></a>
+
+## 0.4.2：本版发行范围与封包前记录
+
+**本版发行范围：连接器版本与分发文档更新，运行 JavaScript 原字节未变；公开核心另包安装。** 核心 [`v0.1.0`](https://github.com/seanliii/meyo-legion-core/releases/tag/v0.1.0) 已作为 prerelease 技术预览发布。第一方核心、选定 auto-tools、打包器及文档已获明确 MIT 公开授权；第三方原许可与 NOTICE 保留。
+
+下表记录 **2026-10-30（Asia/Shanghai）封包前**已发生的事实。连接器 0.4.2 在此截点尚未 pack、push 或创建 tag；未来的发行身份、新装和市场结果只在 `main` 后验记录中补充，不借用旧版结果。
+
+| 对象 | 封包前已记录 | 范围／后续单独记录 |
+|---|---|---|
+| 连接器 0.4.2 | 版本清单、锁文件版本与浏览器测试版本断言已同步；维护者最终回归 **568 项全通过**，运行 JS 未变。[本版 Git 安装目标](MARKET.md#v042)为 `github:seanliii/dsh-plugin-legion#v0.4.2`。 | 不是封包、公开或匿名新装回执。固定提交、tag、发行包字节／SHA-256及实际新装仍待记录。 |
+| 公开核心源码 | [`seanliii/meyo-legion-core`](https://github.com/seanliii/meyo-legion-core) 的唯一初始历史提交为 **`98f1c107c12b8e70c90658dad1ecdf53a3f371e5`**，`v0.1.0` 指向它；没有私有历史。公开树 **610 个 Git blob** 与受审快照一致。 | 是源码快照核对，不是所有成员、设备或真实任务已运行。 |
+| 核心发行资产 | `v0.1.0` Release 已发布为 prerelease；[源码 TAR 与相邻 `.sha256`](CORE.md#public-core-install)已公开。包含 **610 份源码文件、13,762,560 字节**，SHA-256 为 **`c5f1d5392be92b858525ff43736caf6d6ed0fc1b07ac66df72f2acbaa7c00c64`**。匿名 curl 下载后，现有可信校验器 `verify`／`extract` 全通过。 | 发布、下载和源码校验已完成，不等于新环境依赖、服务启动或 DSH 连接已通过。 |
+| 公开前整理与相关回归 | 移除一个共享搜索默认密钥，未使用或验证该值、也未公开其值；**7 份**个人运行账本改为保留方法的去身份摘要；手机报告改为读取本实例 `uid` 的任务账本，无证据记 `not_run`。相关组合 **281 项通过**。 | 不公开私有账本或密钥值；这是相关回归，不是全模型或全成员验收，也不与连接器的 568 项相加。 |
+| 公开包格式 | `meyo-public-core-v1` / `public-source` / MIT，保留 `rights_verified=false`、`member_execution_verified=false`，无 `public_license_granted` 字段。 | 旧私有包原字段与字节不改写；核验状态不否认第一方授权，也不证明全员可用。 |
+| 公开核心全新安装 | 匿名下载的 v0.1.0 已在全新 **Python 3.12 venv** 从公开 PyPI 安装基础依赖，`pip check`、`init`、`check`、`dsh-config` 均退出 0；原服务在新实例的回环端口实际启动。没有复制旧 venv 或启用 system-site-packages。 | 这是 macOS/Python 3.12 的新装与启动，不是 DSH 连接验收。模型和原生 CLI 尚未配置，状态如实保留未就绪。 |
+| 公开核心本地工具实跑 | 从该公开包沿原 `legion_tool.py run` 实际调用：分数相加得到 `7/12`、CSV 金额汇总得到 `50`、JSON 按条件读回两条记录；使用本轮新建的合成输入，没有替身工具或模型调用。 | 这是选定三条不需模型的共享工具回放，不是军团总工具数，也不代表所有保留工具已运行。DSH 保存连接与原生页面安装仍待后验记录。 |
+| Discover 与社区目录 | 维护者已真浏览器验证[启用自定义插件市场、进入发现并添加索引源的路径](MARKET.md#官方-discover-索引)。发布后索引入口为 `https://raw.githubusercontent.com/seanliii/dsh-plugin-legion/main/marketplace.json`，此截点尚未创建；**PR #748 仍 OPEN、待维护者**。 | 设置路径已验，不表示索引已发布、读取或安装成功。索引固定提交、实际读取／安装、PR 更新及维护者处理另记。 |
+| npm | `npm whoami` 实查为 **`ENEEDAUTH`**，本版继续 Git 分发。 | 没有 npm 发布回执，不承诺 1024Store 已有安装按钮。 |
+
+旧 `private-local-only` 包、原清单字段和下列证据均保持原版本归属；第一方 MIT 确认不重写旧归档。**0.4.1 tag 仍固定到 R，原 TGZ 的字节和 SHA 不移动、不替换、不挪给 0.4.2。** 完整能力地图和原产品思想保留；源码公开不等于所有外部 Harness、权重或设备已安装，更不证明无人自治或行业普遍领先。
+
+以下 0.4.1 及更早章节中的“本次／当前／新包”均指各自记录时点，不作为 0.4.2 或公开核心 v0.1.0 的新装或运行回执。
+
 <a id="v041"></a>
 
 <a id="当前候选041-与新私有核心"></a>
@@ -21,7 +45,7 @@
 
 **固定身份：** 程序 **R = `87a2f4dae1c61e2764b7748ecb10ea7b367fcf2f`** 已匿名公开，`v0.4.1` 固定指向 R。受审 TGZ 为 **169,604 字节、29 个文件**，SHA-256 为 **`db7b8391a6c3bb98aa7d35bf38ad24836c61c97b98bdc571f8a2e7f946de0cce`**。原 TGZ 与 `SHA256SUMS` 已在 [v0.4.1 Release](https://github.com/seanliii/dsh-plugin-legion/releases/tag/v0.4.1) 公开；发布后分别匿名下载，与受审文件的字节和 hash 一致，校验和检查退出 0。
 
-**版本记录策略：** R／固定标签与后验文档分开。纯文档 **B = `45e6efd2e3dab2e6f3562cc8fb80254888d03c6f`** 已记录按 R 完整 SHA 的匿名新装与下列限定 UI 事实；本次 **C** 只依据后续回执补充 Release、目录投稿和本地来源清单状态，不改变程序、清单、版本或标签。**从 B、C／`main` 重新打包会改变文档字节，不能替换 R 的受审 TGZ、沿用其 hash 或借用该包的安装核对回执。** 旧标签同样不移动；C 不自引用尚未生成的自身提交 SHA。后续状态见[仓库 main 的本节](https://github.com/seanliii/dsh-plugin-legion/blob/main/docs/PLAN.md#v041)，目录更新不等于已合并收录。
+**版本记录策略：** R／固定标签与后验文档分开。纯文档 **B = `45e6efd2e3dab2e6f3562cc8fb80254888d03c6f`** 已记录按 R 完整 SHA 的匿名新装与下列限定 UI 事实；0.4.1 阶段的 **C** 只依据后续回执补充 Release、目录投稿和本地来源清单状态，当时不改变程序、清单、版本或标签。**从 B、C／`main` 重新打包会改变文档字节，不能替换 R 的受审 TGZ、沿用其 hash 或借用该包的安装核对回执。** 旧标签同样不移动；C 记录时不自引用尚未生成的自身提交 SHA。本轮 0.4.2 准备与这些历史文档分开。后续状态见[仓库 main 的本节](https://github.com/seanliii/dsh-plugin-legion/blob/main/docs/PLAN.md#v041)，目录更新不等于已合并收录。
 
 <a id="public-r-acceptance"></a>
 
@@ -64,11 +88,11 @@
 <a id="current-private-core"></a>
 <a id="core-548d148"></a>
 
-### 私有核心 548d148：首次默认出口与续作
+### 历史私有核心 548d148：首次默认出口与续作
 
-当前固定私有核心提交为 **`548d14893ca62e776f60c50761cabac4e19585ba`**，**606 个文件**，包 SHA-256 为 **`65177da56baf8423444cc88602c194563f017d0df55c01d038739e89a60df7a9`**。`core-548d148-final/build.json` 与 `verify.json` 对应同一提交和文件数。分发仍为 **`private-local-only`**，`public_license_granted=false`、`member_execution_verified=false`，没有公共核心下载发行。
+该历史固定私有核心提交为 **`548d14893ca62e776f60c50761cabac4e19585ba`**，**606 个文件**，包 SHA-256 为 **`65177da56baf8423444cc88602c194563f017d0df55c01d038739e89a60df7a9`**。`core-548d148-final/build.json` 与 `verify.json` 对应同一提交和文件数。该旧包分发仍为 **`private-local-only`**，`public_license_granted=false`、`member_execution_verified=false`，没有该旧包的公共下载发行。
 
-上述字段是包内固定元数据，不是用户未授权公开的证据，也不代替实际运行回执。该固定包的 **606 项本地来源清单与逐文件字节对照已完成**，不是公开发行或权属认证；第一方部分的公开决定权范围与许可证仍需一次实质确认，后续[公开格式、旧包兼容、固定发行与新用户安装验收](CORE.md#public-core-next-steps)尚未完成。原始来源报告不公开；本次连接器公开新装没有重验核心。
+上述字段是旧包内固定元数据，不是用户未授权公开的证据，也不代替实际运行回执。该固定包的 **606 项本地来源清单与逐文件字节对照已完成**，不是公开发行或权属认证。第一方 MIT 与新公开核心的发行事实已另行记录；不因此改写旧包字段、hash 或把历史实跑移给公开版本。[公开格式](CORE.md#public-core-next-steps)与 [GitHub main 的新用户验收](https://github.com/seanliii/dsh-plugin-legion/blob/main/docs/PLAN.md#v042)各有自己的范围。原始来源报告不公开；0.4.1 连接器公开新装没有重验核心。
 
 | 范围 | 实际事实 | 不能扩大成的结论 |
 |---|---|---|
@@ -246,12 +270,13 @@ OpenMontage 本次取得的版本为 `cd9f3c1f03368be87b140af494914b8ee4e3c7a4`�
 
 ## 仍待完成／未证明
 
-R、固定标签、匿名完整 SHA 新装以及 Release 原附件的匿名下载核对已完成；以下事项仍未完成，不以连接器发行替代：
+公开核心 **v0.1.0 的发布、匿名下载和源码校验已完成**；以下事项在封包前截点仍待单独记录。后续结果只补到 [GitHub main](https://github.com/seanliii/dsh-plugin-legion/blob/main/docs/PLAN.md#v042)，不回写固定发行包或旧标签：
 
-1. **0.4.1 社区目录维护者审核。** PR #748 的 head 为 `4bd8cc6e5196de363149bff317a161833ad8f2db`，仍为 OPEN／MERGEABLE、未合入；本地 `manual-review` 与该 head 的 `static-review=SUCCESS` 分别记录，`merge` 任务为 SKIPPED，不是合入成功或产品验收。见[投稿记录](MARKET.md#社区目录更新已有的一份-json)。未做 npm publish，也不声称商店已有一键安装。
-2. **核心公开发行。** 本地来源清单已完成，仍需一次确认第一方部分的公开决定权范围与许可证，之后适配公开格式并兼容旧包、固定发行、验证受支持环境的新用户安装。核心目前没有公共下载版本；不把包内固定字段当作缺少用户授权或权属已认证的证据。
-3. 全部可选 Harness、媒体、设备及开源项目的实际接入。目录和保留源码不等于已安装、已授权、已运行。
-4. 完全无人值守、所有场景自动返工与“超过顶尖单家”的普遍结论。已有作品检查与截图反馈来自监督者；普通续作与后台自动修复的身份和运行要求分开，见[核心边界](CORE.md#军团的核心没有变成一句宣传语)。
+1. **0.4.2 连接器发行。** 固定公开提交、tag、包身份与新装结果均待本轮真实回执；0.4.1 原标签和受审 TGZ 不变，旧 hash 不挪用。
+2. **社区目录与官方 Discover 索引。** 沿用 PR #748、仍待维护者；已记录的 0.4.1 head 为 `4bd8cc6e5196de363149bff317a161833ad8f2db`，其 OPEN／MERGEABLE、`manual-review`、`static-review=SUCCESS` 与 `merge=SKIPPED` 仅属于该记录，不是 0.4.2 已投稿或合入。见[投稿记录](MARKET.md#社区目录更新已有的一份-json)。设置路径已真浏览器核对；索引文件创建、发布、读取与安装仍待完成。`npm whoami=ENEEDAUTH`，继续 Git，不声称 npm 或商店已有一键安装。
+3. **公开核心的新用户安装与连接。** 完成全新 Python 3.12 venv 的公开 PyPI 依赖安装，再记录 `init`、`serve`、`dsh-config` 和 DSH 保存连接的实际结果；真实工具／模型调用单独验证。源码包 `verify`／`extract` 已通过，不再把核心公开发布或第一方授权列为待办。
+4. 全部可选 Harness、媒体、设备及开源项目的实际接入。目录和保留源码不等于已安装、已授权、已运行。
+5. 完全无人值守、所有场景自动返工与“超过顶尖单家”的普遍结论。已有作品检查与截图反馈来自监督者；普通续作与后台自动修复的身份和运行要求分开，见[核心边界](CORE.md#军团的核心没有变成一句宣传语)。
 
 安装、启用与构建脚本遵守原生权限。保留许可证、合法项目身份、导出授权、取消与恢复边界，不通过假成功或扩大下载根“接通”成果。
 

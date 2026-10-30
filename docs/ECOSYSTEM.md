@@ -2,9 +2,11 @@
 
 **定位：DSH 里的超级协作层。** 一个入口，既能利用 DSH 原有插件，也能寻找和适配开源能力，还能把任务交给独立军团核心。DSH 不需要变成另一个产品，军团也不应该被缩成一个只会转发文字的壳。
 
-本页介绍 `dsh-plugin-legion` **0.4.1**：在 DSH 原生侧栏五页工作台中发现能力、读源、包装、查询真实成员、协作和下载文件。安装使用已公开的固定标签 [v0.4.1](MARKET.md#v041)；按完整提交匿名新装及限定的无核心原生 UI 检查已完成，与封包前实操分别记在[版本记录](PLAN.md#v041)。[0.4.0 历史公开与验收](PLAN.md#v040)仍按原日期、版本与 hash 归属，不作为 0.4.1 的完整 UI 或公开安装证明。研究、编排、原生协作、记忆恢复和交付的实际程序在[独立军团核心](CORE.md)，不是写在这篇介绍里就算实现。
+**本版 0.4.2 的主线：DSH 插件 → 独立军团核心 → 按需能力分发。** 先按[本版 Git 安装目标](MARKET.md#v042)启用连接器，在五页工作台找能力；需要委托研究与交付时，再用[已公开的核心 v0.1.0 源码](CORE.md#public-core-install)建立实例。核心另包安装，研究、编排、原生协作、记忆恢复和交付仍由原核心承担。
 
-**Connector 0.4.1 is publicly available through the fixed-tag [installation route](MARKET.md#v041).** Anonymous installation of the exact commit and scoped core-free native UI checks are complete, with [separate records](PLAN.md#v041) from packaging-time checks. The [v0.4.1 Release](https://github.com/seanliii/dsh-plugin-legion/releases/tag/v0.4.1) is published; the 0.4.1 catalog update is open for maintainer review. Historical records retain their original dates, versions and hashes; neither those records nor the scoped checks establish full workbench UI coverage or expand the separate core's licensing boundary.
+**Edition 0.4.2 connects DSH to the separately installed, public core v0.1.0 technical preview.** The first-party core, selected auto-tools, packager and documentation are MIT; third-party licenses remain intact. The initial public source snapshot contains no private history. Post-release installation and runtime receipts belong on [GitHub main](https://github.com/seanliii/dsh-plugin-legion/blob/main/docs/PLAN.md#v042), not retroactively in frozen tag documentation.
+
+既有连接器 **0.4.1** 仍可按[固定标签](MARKET.md#v041)安装，[v0.4.1 Release](https://github.com/seanliii/dsh-plugin-legion/releases/tag/v0.4.1)已公开；其匿名固定提交新装、限定无核心 UI 与封包前检查分别保留在[版本记录](PLAN.md#v041)。PR #748 沿用且仍待维护者，官方 Discover 固定 Git 索引另行准备；不声称 npm 或 1024Store 已有一键入口。[0.4.0 历史记录](PLAN.md#v040)及其他旧回执保留原日期、版本和 hash，不作为 0.4.2 或新公开核心的安装、完整 UI 或执行证明。
 
 ## 先回答最容易混淆的三个问题
 
@@ -12,7 +14,7 @@
 |---|---|
 | 注册一个开源仓库，就能把全部代码变成工具吗？ | **不能。** 注册只是让它被发现；模型还需理解接口、选择可复用能力、写适配、安装依赖并验证真实调用。没有稳定接口的应用可能需要较多改造。 |
 | 各种顶尖 Harness 全部装在插件里了吗？ | **没有。** 核心保留原成员适配、目录和接入机制；各家原生程序、账号、模型与设备按需安装授权。查看 `legion_runtime` 的实际事实，不能把目录当已安装清单。 |
-| 是不是把我们全部代码公开了？ | **不是。** 公开包是连接器及说明；独立核心另包安装，标记为 `private-local-only`，连接器 MIT 不覆盖核心。核心清单的 `public_license_granted` 与 `member_execution_verified` 均为 `false`，是包内固定字段，不用于判断用户的公开授权或成员的实际运行。本地来源清单已完成，第一方部分的公开决定权范围与许可证仍待确认；核心尚无公众发行入口，[后续发行步骤](CORE.md#public-core-next-steps)未完成。公司历史、数据、凭据、无关业务和未许可代码不整包外发。 |
+| 是不是把我们全部代码公开了？ | **不是。** 连接器与公开核心 v0.1.0 分包；只公开选定源码快照，不含私有历史、实例、凭据或无关业务。第一方 MIT、第三方原许可各自保留；新公开格式不改写旧 `private-local-only` 包，见[分发说明](CORE.md#public-core-next-steps)。 |
 
 <a id="native-workbench"></a>
 

@@ -2,15 +2,17 @@
 
 想象 DSH 是你的工作台，军团是能接任务的团队，各家 Harness 和工具是团队能使用的专长。连接器负责把它们接通，**不是把所有人的代码压成一个巨型插件，也不是登记一个名字就假装获得了能力。**
 
+**新用户先做：** [下载公开核心 v0.1.0 并建立实例](#public-core-install)，启动后将 `dsh-config` 输出的地址与凭据引用保存到 DSH 插件。v0.1.0 是已发布的技术预览，核心不随连接器打包。
+
 当前交付分三层：
 
 | 层 | 放什么 | 不混淆什么 |
 |---|---|---|
-| 本公开插件 | 原生侧栏五页工作台、工具与配置、开源发现、读源、适配包装、任务接续、正式文件下载 | 不含私有核心、用户数据／日志／凭据、第三方上游全量、模型权重或公司大仓及其历史。 |
-| 独立军团核心 | 原服务、编排与协作、持久会话、研究与知识入口、正式成果出口及选定共享工具源码 | 独立安装的真实程序；当前只做个人私有预览，不借插件 MIT 公开核心。 |
+| 本公开插件 | 原生侧栏五页工作台、工具与配置、开源发现、读源、适配包装、任务接续、正式文件下载 | 不捆绑核心、用户数据／日志／凭据、第三方上游全量、模型权重或公司大仓及其历史。 |
+| 独立军团核心 | 原服务、编排与协作、持久会话、研究与知识入口、正式成果出口及选定共享工具源码 | v0.1.0 公开源码技术预览，独立安装；第一方 MIT，第三方原许可保留。 |
 | 按需成员和能力 | 原生 Harness、CLI、MCP、skill、媒体模型、浏览器与设备 | 各自安装、配置、授权和验证；目录有名字不表示已经可用。 |
 
-本页随连接器 **0.4.1** 说明架构和安装接口；固定公开提交的新装已完成[限定的无核心原生 UI 检查](PLAN.md#public-r-acceptance)，没有连接核心或模型。**私有核心 548d148 已有固定版本的限定回执**，与连接器新装及历史验收分别见[状态表](PLAN.md)。不把愿景、旧回执或一条成功链路当作全部能力的证明。
+本页对应连接器 **0.4.2 的发行范围**。公开核心的固定身份与安装步骤见下方；发布后的新装、服务和 DSH 连接回执更新在 [GitHub main](https://github.com/seanliii/dsh-plugin-legion/blob/main/docs/PLAN.md#v042)。[0.4.1 无核心 UI 检查](PLAN.md#public-r-acceptance)与[旧私有核心 548d148](PLAN.md#core-548d148)保留原版本归属。
 
 ## 军团的核心没有变成一句宣传语
 
@@ -94,15 +96,33 @@
 - 未取得分发依据的第三方源码或模型权重。
 - 机器专用 `.venv`、`node_modules` 和指向旧开发树的快捷链接。
 
-私有包的文件 hash 解决“这一包到底是什么”；不是安全认证或公开分发许可证。固定核心 548d148 的 **606 项本地来源清单与逐文件字节对照已完成**，不是公开发行、权属认证或运行验收。**当前没有公共核心下载版本。**
+私有包的文件 hash 解决“这一包到底是什么”；不是安全认证或公开分发许可证。历史固定核心 548d148 的 **606 项本地来源清单与逐文件字节对照已完成**，不是公开发行、权属认证或运行验收。新公开核心 v0.1.0 的身份与源码校验另行记录，不借这份旧包清单背书。
 
 已确认随包的 Codex 资源内嵌了 Apache-2.0 全文和 NOTICE，应保留其来源与许可条件，不统一改标为连接器的 MIT。OpenMontage 在此包中只有项目接线／测试和 source-only 声明，不含其上游实现树，不能据该声明判定整个核心不可公开。
 
 <a id="public-core-next-steps"></a>
 
-**下一步，尚未完成：** 一次确认第一方部分的公开决定权范围与所选许可证 → 适配公开包格式和说明，同时兼容旧私有包 → 发布固定核心版本、获取入口与 hash → 在受支持环境完成新用户安装与配置验收。来源清单不代替这次实质确认，也不表示上述发行或安装已完成；第三方许可与按需依赖仍各自保留。
+### 公开核心 v0.1.0 与许可
 
-本次核心包清单写入以下字段：
+第一方军团核心、选定 auto-tools、打包器与文档已获明确授权，以 **MIT** 公开。第三方源码、资源、依赖的许可、署名与 NOTICE 各自保留，不统一改标 MIT。
+
+[`seanliii/meyo-legion-core`](https://github.com/seanliii/meyo-legion-core) 的初始公开历史只有源码快照提交 **`98f1c107c12b8e70c90658dad1ecdf53a3f371e5`**，不含私有历史；`v0.1.0` 固定到该提交，GitHub Release 标为 **prerelease／技术预览**。公开树的 **610 个 Git blob** 与受审快照一致；源码包匿名下载后，现有可信校验器的 `verify`／`extract` 已通过。
+
+公开包格式如下：
+
+```json
+{
+  "format": "meyo-public-core-v1",
+  "distribution": "public-source",
+  "license": "MIT",
+  "rights_verified": false,
+  "member_execution_verified": false
+}
+```
+
+新格式**不含 `public_license_granted` 字段**。两个 `false` 不否认第一方授权，也不表示全量权属审计或全成员执行已完成。全新 Python 3.12 环境的依赖安装及后续服务／DSH 连接验收另见 [GitHub main 回执](https://github.com/seanliii/dsh-plugin-legion/blob/main/docs/PLAN.md#v042)，不由源码校验推导运行成功。
+
+**旧私有包原样保留。** 以下是既有 `private-local-only` 包的历史字段，不是新公开包模板，也不改写旧归档：
 
 ```json
 {
@@ -112,7 +132,7 @@
 }
 ```
 
-这些是打包器写入的**固定元数据**，不是用户未授权公开的证据，也不是一次运行检测的结果。连接器的 MIT 不自动覆盖核心；具体成员的实际运行范围看各版本回执，不因单次成员成功就把清单改为“全员验证”或推导出分发许可。
+这些是旧打包器写入的**固定元数据**，不是用户未授权公开的证据，也不是一次运行检测的结果。第一方核心的 MIT 来自独立确认，不由连接器许可或旧包字段推导；具体成员的实际运行范围看各版本回执，不因单次成员成功就把清单改为“全员验证”。
 
 历史的[首次互动网页](PLAN.md#真实作品验收到哪里)、[60872ced 续作与重启](PLAN.md#historical-60872ced)以及 [c8f10c6 正式 TGZ 出口与调用](PLAN.md#formal-marked-acceptance)分别保留在状态表，包含原失败、监督者反馈、完整包身份与实际操作范围，不把其中一次成功移给另一版本。
 
@@ -120,11 +140,57 @@
 
 ## 安装自己的实例
 
-### 当前可核对的包
+<a id="public-core-install"></a>
 
-**当前可核对的私有核心为 `548d14893ca62e776f60c50761cabac4e19585ba`，仍是 `private-local-only`，没有公共下载地址。** 固定包身份与校验、原实例保留、首次及续作默认正式导出、下载读回和随包关键回归的实际范围见 [548d148 记录](PLAN.md#core-548d148)。这些是限定实例与作品的证据，不代表全成员实跑或完全无人值守；[c8f10c6 历史包](PLAN.md#historical-c8f10c6)及更早版本的 SHA、失败和验收仍分别保留。
+### 0. 下载并核对公开源码
 
-以下供已合法取得并审查过**私有核心包**的操作者使用。打包器及精确打包／校验／解包参数随核心的 `scripts/package_core.py --help` 和 `docs/core-private-package.md` 提供。使用包的已知 SHA-256 核对并解包到全新目录，再从该目录操作；不要把旧开发环境当成“全新安装”。
+从以下固定发行取得源码，无需旧私有包或原公司大仓：
+
+| 项目 | 固定公开版本 |
+|---|---|
+| 源码仓库 | [`seanliii/meyo-legion-core`](https://github.com/seanliii/meyo-legion-core)，公开初始提交 `98f1c107c12b8e70c90658dad1ecdf53a3f371e5`。 |
+| 固定发行 | [`v0.1.0`](https://github.com/seanliii/meyo-legion-core/releases/tag/v0.1.0)，已发布的 prerelease 技术预览。 |
+| 源码包 | [`meyo-legion-core-0.1.0.tar`](https://github.com/seanliii/meyo-legion-core/releases/download/v0.1.0/meyo-legion-core-0.1.0.tar)，**610 份源码文件，13,762,560 字节**。 |
+| 相邻校验文件 | [`meyo-legion-core-0.1.0.tar.sha256`](https://github.com/seanliii/meyo-legion-core/releases/download/v0.1.0/meyo-legion-core-0.1.0.tar.sha256)，内容为下方 SHA-256。 |
+
+源码包 SHA-256：
+
+```text
+c5f1d5392be92b858525ff43736caf6d6ed0fc1b07ac66df72f2acbaa7c00c64
+```
+
+在本机下载目录执行；`.sha256` 是纯摘要，不是带文件名的校验清单：
+
+```sh
+curl --fail --location --output meyo-legion-core-0.1.0.tar \
+  'https://github.com/seanliii/meyo-legion-core/releases/download/v0.1.0/meyo-legion-core-0.1.0.tar'
+curl --fail --location --output meyo-legion-core-0.1.0.tar.sha256 \
+  'https://github.com/seanliii/meyo-legion-core/releases/download/v0.1.0/meyo-legion-core-0.1.0.tar.sha256'
+cat meyo-legion-core-0.1.0.tar.sha256
+printf '%s  %s\n' \
+  'c5f1d5392be92b858525ff43736caf6d6ed0fc1b07ac66df72f2acbaa7c00c64' \
+  'meyo-legion-core-0.1.0.tar' | shasum -a 256 -c -
+```
+
+相邻摘要应与上方一致，校验须返回 `OK`；失败时不要解包。成功后，使用不存在的新目录，源码文件位于归档根部：
+
+```sh
+mkdir meyo-legion-core-0.1.0 &&
+  tar -xf meyo-legion-core-0.1.0.tar -C meyo-legion-core-0.1.0 &&
+  cd meyo-legion-core-0.1.0
+```
+
+需要逐文件核验时，按[固定版本的公开包指南](https://github.com/seanliii/meyo-legion-core/blob/98f1c107c12b8e70c90658dad1ecdf53a3f371e5/docs/public-core-release.md)使用已审查、可信的校验器；不要执行未知包来给它自己背书。
+
+接下来按 **Python 3.12 全新环境 → `init` → `serve` → 另一终端 `dsh-config` → 插件保存连接**操作。核心仍另包安装，成员、权重、账号与设备按需配置；本次公开版本的新环境运行及连接回执在 [GitHub main](https://github.com/seanliii/dsh-plugin-legion/blob/main/docs/PLAN.md#v042)单独记录。
+
+<a id="当前可核对的包"></a>
+
+#### 历史私有包：只供旧版本复现
+
+**既有私有核心 `548d14893ca62e776f60c50761cabac4e19585ba` 仍是 `private-local-only`，没有该旧包的公共下载地址。** 固定包身份与校验、原实例保留、首次及续作默认正式导出、下载读回和随包关键回归的实际范围见 [548d148 记录](PLAN.md#core-548d148)。这些是限定实例与作品的证据，不代表全成员实跑或完全无人值守；[c8f10c6 历史包](PLAN.md#historical-c8f10c6)及更早版本的 SHA、失败和验收仍分别保留。
+
+已合法取得旧私有包的操作者，可继续按该包的 `scripts/package_core.py --help` 和 `docs/core-private-package.md` 核对、解包到新目录；不改旧包字段或 hash。**这条历史路线不是新用户安装的前提**，也不要把旧开发环境当成公开版本的“全新安装”。
 
 ### 1. 独立环境与基础依赖
 
@@ -132,7 +198,8 @@
 
 ```sh
 python3.12 -m venv .venv
-.venv/bin/python -m pip install -r release/legion-service/requirements-core.txt
+.venv/bin/python -m pip install --index-url https://pypi.org/simple \
+  -r release/legion-service/requirements-core.txt
 ```
 
 不使用 `--system-site-packages`，不复制旧虚拟环境。基础依赖不会安装所有 Harness、GPU模型或设备服务。需要 Auto/DeepAgents Python 依赖时，才另装 `release/legion-service/requirements-auto.txt`，并验证相应能力；不是默认全部启用。
@@ -149,6 +216,8 @@ python3.12 -m venv .venv
 初始化只在本机建立身份，不创建云端账号；重复初始化不会重置历史。登录凭据在实例的 `login-token.txt`，不要发到聊天、版本库或公共文件服务器。
 
 ### 3. 配置本人模型
+
+只想先启动并连接实例时，可先跳到第 4 步；实际委托任务前再配置本人模型，配置后按原入口重新启动服务。
 
 先确认自己的 `codex --version` 可以正常执行，再使用本人提供方实际支持的模型与 **Responses** API；不能把 Chat Completions 地址当成同一协议。
 
@@ -191,21 +260,26 @@ python3.12 -m venv .venv
 
 旧互动网页验收中的真实故障是图片声明缺失：提供方图片请求已成功，但原生执行环境尚未声明图片输入。补齐声明后，同会话作者的 `view_image` 调用返回了 `input_image`，作者据截图修正了作品。配置保存回执仍为 `provider_verified: false`，真实请求与工具 trace 另行保存，不把“写了配置”变成“调用已验证”，也不声称此视觉验收已在当前包重跑。
 
-### 4. 接到 DSH 并启动原服务
+### 4. 先启动原服务，再接到 DSH
 
 ```sh
 .venv/bin/python -I meyo.py check --state-dir "/绝对路径/我的军团实例"
-.venv/bin/python -I meyo.py dsh-config --state-dir "/绝对路径/我的军团实例"
 .venv/bin/python -I meyo.py serve --state-dir "/绝对路径/我的军团实例"
 ```
 
-`dsh-config` 只输出 `baseUrl` 与 `tokenFile` 等非秘密接线信息。把其 `config` 对象填入本插件配置，不粘贴整份回执，也不把令牌内容填进去。`check` 不调用模型；`serve` 启动原 `server.py`，不是另造调度器或自动公网部署。
+保持服务运行；在另一终端进入同一源码根目录，再执行：
+
+```sh
+.venv/bin/python -I meyo.py dsh-config --state-dir "/绝对路径/我的军团实例"
+```
+
+`dsh-config` 只输出 `baseUrl` 与 `tokenFile` 等非秘密接线信息。按其 **`config` 对象**填写 DSH 插件的 **连接与配置 → 核心地址／私有令牌文件路径 → 保存连接配置**，随后刷新成员。不要粘贴整份回执，也不把令牌值放进配置、命令或聊天；模型密钥也只通过本人私有文件提供。`check` 不调用模型；`serve` 启动原 `server.py`，不是另造调度器或自动公网部署。保存和刷新不等于模型已完成任务。
 
 DSH 与核心不在同一机器时，核心文件路径不可直接使用；保留 HTTPS 服务地址及 Host 私下配置的 `tokenEnv` 方式，见[协议](PROTOCOL.md#7-configuration)。
 
 #### 随包自检的范围
 
-需要运行随包关键回归时，在核心包根目录复用现有入口：
+以下保留历史私有包已经使用的自检入口与范围；新公开包的自检结论须以该固定版本自己的回执为准。需要复现这些随包关键回归时，在核心包根目录使用：
 
 ```sh
 .venv/bin/python release/legion-service/harness_selfcheck.py \
@@ -214,7 +288,7 @@ DSH 与核心不在同一机器时，核心文件路径不可直接使用；保�
 
 这是显式的独立包模式，不依赖解包目录有 `.git`，也不做真实成员体检。范围仅为 `release/legion-service/tests/` 下的 `test_core_distribution.py`、`test_personal_runtime_bootstrap.py`、`test_harness_selfcheck.py`；应随包测试缺失仍硬失败，不按现存文件缩小范围。
 
-大仓历史测试缺失项列入 `historical_tests.not_included`，未验证项保留在 `historical_tests.not_verified`；真实成员的 `live_harnesses.status` 仍为 `not_verified`。不加 `--run-tests` 只列范围，不能算通过；退出码 0 也仅表示随包关键回归通过，不代表大仓全量、真实成员或用户作品已验收。这里的 `private-core` 是自检模式名，不改变包的 `private-local-only` 分发标记。
+大仓历史测试缺失项列入 `historical_tests.not_included`，未验证项保留在 `historical_tests.not_verified`；真实成员的 `live_harnesses.status` 仍为 `not_verified`。不加 `--run-tests` 只列范围，不能算通过；退出码 0 也仅表示随包关键回归通过，不代表大仓全量、真实成员或用户作品已验收。这里的 `private-core` 是历史自检模式名，不改变旧包的 `private-local-only` 分发标记，也不决定新公开包的分发或许可状态。
 
 548d148 的随包关键回归已有[实际通过回执](PLAN.md#core-548d148)，仅限上述三个测试文件。旧自检失败、历史缺失／未测项与真实成员未验证状态仍分别保留，不能把独立包模式的通过说成全仓或全家通过。
 

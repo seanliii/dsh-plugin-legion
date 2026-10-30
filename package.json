@@ -1,6 +1,6 @@
 {
   "name": "dsh-plugin-legion",
-  "version": "0.4.1",
+  "version": "0.4.2",
   "description": "An open-source capability and collaboration layer for DeepSeek Harness, connected to your independently installed Legion core.",
   "type": "module",
   "main": "index.js",

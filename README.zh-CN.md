@@ -2,13 +2,15 @@
 
 [English](README.md) | 简体中文
 
-在 DSH 里找现成工具、读公开源码，按需安装你审查过的能力包。接好你有权使用的独立军团核心后，还能委托研究、协作、续作并下载正式成果。**连接器 0.4.1 已通过 Git/tag 公开；独立核心仍为 `private-local-only`，没有公共下载版本。**
+在 DSH 里找现成工具、读公开源码，按需安装你审查过的能力包。接好你有权使用的独立军团核心后，还能委托研究、协作、续作并下载正式成果。
+
+**连接器 0.4.2：** 在 DSH 内发现能力、协作并接收成果；军团核心另行安装。[公开核心 v0.1.0](https://github.com/seanliii/meyo-legion-core/releases/tag/v0.1.0) 已提供源码，第一方采用 MIT，第三方原许可保留，当前为**技术预览**。
 
 ## 立即开始
 
-1. 按[**v0.4.1 安装说明**](docs/MARKET.md#v041)安装，装好后在 **DSH 原生插件页**明确启用 Legion。
+1. 按[**0.4.2 Git 安装说明**](docs/MARKET.md#v042)安装，然后在 **DSH 原生插件页**明确启用 Legion；发布后的新装回执见下方 GitHub `main` 状态页。
 2. 打开侧栏 **军团**，选择 **当前工作会话**，进入 **找能力**。查工具、Skill 和公开 GitHub 不需要军团核心。
-3. 先查看来源，再决定是否安装；需要委托研究与交付时，先合法取得独立核心，再按[核心配置](docs/CORE.md#安装自己的实例)接入。安装连接器不会附带核心。
+3. 需要委托工作时，[下载并核对核心 v0.1.0](docs/CORE.md#public-core-install)，建立 Python 3.12 全新环境，再按 **`init` → `serve` → `dsh-config` → 插件保存连接**接入；实际派单前配置本人模型。核心不随连接器打包或启动。
 
 可以在普通 DSH 对话里说：
 
@@ -16,7 +18,7 @@
 帮我找能完成这件事的现成插件。先给来源和限制，不要安装。
 ```
 
-[版本与验收记录](docs/PLAN.md) · [限制、数据与许可](#限制数据与许可)
+[发布后回执：GitHub main](https://github.com/seanliii/dsh-plugin-legion/blob/main/docs/PLAN.md#v042) · [限制、数据与许可](#限制数据与许可)
 
 ## 可以做什么
 
@@ -61,7 +63,19 @@
 
 Host 插件在 **agent 沙箱之外运行**，启用前须信任实际代码与依赖。详见[安全说明](docs/SECURITY.md)。
 
+### 本版 Git 安装目标：v0.4.2
+
+本版采用 Git，不做 npm 发布。`web` 是示例 profile，换成自己的名称，保留 `-w`：
+
+```sh
+dsh plugin --profile web -w add 'github:seanliii/dsh-plugin-legion#v0.4.2'
+```
+
+这是本版安装目标；标签可用状态、固定提交与发布后的新装回执请看 [GitHub main](https://github.com/seanliii/dsh-plugin-legion/blob/main/docs/PLAN.md#v042)，固定 tag 内的文档不会追加后验结果。[Discover 设置路径与社区目录状态](docs/MARKET.md#官方-discover-索引)另行说明，不与 Git 安装混算。
+
 ### 固定版本 Git 安装：v0.4.1
+
+**以下是既有 0.4.1 发行，不是 0.4.2 的安装或验收记录。**
 
 使用已公开的固定标签；`web` 是示例 profile，换成你自己的名称，保留 `-w`：
 
@@ -101,7 +115,9 @@ dsh plugin --profile web -w add 'github:seanliii/dsh-plugin-legion#v0.4.1'
 
 ## 连接你独立安装的军团核心
 
-新建核心实例、安装依赖和配置本人模型，见[核心安装说明](docs/CORE.md#安装自己的实例)。同一台机器上，在核心目录运行：
+取得[公开 v0.1.0 源码包与 SHA-256](docs/CORE.md#public-core-install)，按[核心安装说明](docs/CORE.md#安装自己的实例)完成：**Python 3.12 全新环境 → `init` → `serve` → `dsh-config` → 插件保存连接**。本人模型在实际委托前配置，不是取得源码的前提；已有获授权实例仍可按原配置连接。
+
+保持 `serve` 运行；在同一台机器另开终端，进入核心源码目录执行：
 
 ```sh
 .venv/bin/python -I meyo.py dsh-config --state-dir "/绝对路径/你的私有实例"
@@ -111,7 +127,7 @@ dsh plugin --profile web -w add 'github:seanliii/dsh-plugin-legion#v0.4.1'
 
 ```json
 {
-  "baseUrl": "http://127.0.0.1:8000",
+  "baseUrl": "http://127.0.0.1:8015",
   "tokenFile": "/绝对路径/你的私有实例/login-token.txt"
 }
 ```
@@ -177,4 +193,6 @@ DSH：你的对话、原生工具、权限与界面
 
 恢复状态应保持私有。新 v2 原生调用记录只存元数据，但旧记录及两端会话仍可能留有正文；卸载不会删除用户文件或取消远端工作。
 
-[MIT](LICENSE) 只覆盖连接器。独立核心包标记为 **`private-local-only`**，尚无公众发行入口。本地来源清单已完成，但第一方部分的公开决定权范围与许可证选择仍待确认，后续[核心发行步骤](docs/CORE.md#public-core-next-steps)也未完成。包内字段不判断用户的公开授权，连接器 MIT 也不自动覆盖核心。Marked 验收包是另外生成的本地产物，不随连接器分发；这里也不包含私有核心代码、用户或实例数据、凭据、私有证据与日志、公司业务代码、公司大仓及其历史、第三方上游全量源码或模型权重。成员、依赖和生成适配各有自己的范围；能力地图或一单成功都不证明全家已经安装、能够无人自治。这是独立社区项目，不是 DeepSeek 官方产品。
+[MIT](LICENSE) 覆盖连接器；用户已另行确认第一方核心、选定 auto-tools、打包器与文档采用 MIT 公开。[公开格式与第三方原许可](docs/CORE.md#public-core-next-steps)保留 `rights_verified=false`、`member_execution_verified=false`，不含 `public_license_granted` 字段；旧 `private-local-only` 包及其元数据不改写。公开与源码校验不等于运行或全成员验收。
+
+核心仍另包安装，不捆绑在连接器中。Marked 验收包也是另外生成的本地产物；这里不包含用户或实例数据、凭据、私有证据与日志、无关公司业务代码、公司大仓及其私有历史、第三方上游全量源码或模型权重。成员、依赖和生成适配各有自己的范围；能力地图或一单成功都不证明全家已经安装、能够无人自治或普遍超过顶尖单家。这是独立社区项目，不是 DeepSeek 官方产品。
