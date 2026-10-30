@@ -1319,3 +1319,95 @@ test('team wiring: flow observations and failures retain original uncertainty wh
   assert.ok(!failed.text.includes(TOKEN))
   assert.match(unpack(failed).error, /原生目录读取失败/)
 })
+
+// Core review P2-3: every observed task must remain reachable, not just the first 100.
+test('repair: task pages cover long indexes using whole rows and snapshot-bound cursors', async t => {
+  const f = await fixture(t)
+  const raw = { source: 'local_recovery_index_not_live_status', tasks: Array.from({ length: 135 }, (_, i) => ({
+    task_ref: (i + 1).toString(16).padStart(32, '0'), key: `task-${i}-${'长'.repeat(150)}`,
+    created_at: '2026-10-30T00:00:00Z', description: `Bearer ${TOKEN} ${'huge'.repeat(5000)}`,
+  })) }
+  const original = JSON.stringify(raw)
+  t.mock.method(f.client, 'list', async execution => {
+    assert.equal(execution.sessionId, 'workbench-agent')
+    return raw
+  })
+  let offset = 0, snapshot
+  const seen = []
+  do {
+    const result = await f.run({ action: 'tasks', args: { offset, limit: 30, ...(snapshot ? { snapshot } : {}) } })
+    assert.ok(!result.text.includes(TOKEN))
+    const { ok, value } = unpack(result)
+    assert.equal(ok, true)
+    const page = value.task_page
+    assert.equal(page.available, true)
+    assert.equal(page.total, 135)
+    assert.equal(page.offset, offset)
+    assert.ok(page.shown_count > 0 && page.shown_count <= 30)
+    assert.equal(page.shown_count, value.tasks.length)
+    assert.match(value.connection_id, /^[a-f0-9]{64}$/)
+    if (snapshot) assert.equal(page.snapshot, snapshot)
+    snapshot = page.snapshot
+    seen.push(...value.tasks.map(row => row.task_ref))
+    if (page.next_offset !== null) assert.equal(page.next_offset, offset + page.shown_count)
+    offset = page.next_offset
+  } while (offset !== null)
+  assert.deepEqual(seen, raw.tasks.map(row => row.task_ref))
+  assert.equal(JSON.stringify(raw), original)
+})
+
+test('repair: task continuation rejects changed snapshots and unowned cursor fields', async t => {
+  const f = await fixture(t)
+  let tasks = Array.from({ length: 31 }, (_, i) => ({ task_ref: i.toString(16).padStart(32, '0'), key: `task-${i}` }))
+  t.mock.method(f.client, 'list', async () => ({ tasks }))
+  const first = unpack(await f.run({ action: 'tasks', args: { limit: 30 } })).value
+  assert.ok(first.task_page?.snapshot)
+  tasks = [{ task_ref: 'f'.repeat(32), key: 'inserted' }, ...tasks]
+  const changed = unpack(await f.run({ action: 'tasks', args: { offset: 30, snapshot: first.task_page.snapshot } }))
+  assert.equal(changed.ok, false)
+  assert.match(changed.error, /变化|changed/i)
+  for (const args of [{ offset: 30 }, { offset: -1 }, { limit: 0 }, { limit: 31 },
+    { snapshot: 'invalid' }, { sessionId: 'foreign' }, { connection_id: 'a'.repeat(64) }]) {
+    assert.equal(unpack(await f.run({ action: 'tasks', args })).ok, false)
+  }
+})
+
+test('repair: missing or upstream-incomplete task lists never claim known empty', async t => {
+  const f = await fixture(t)
+  for (const raw of [{}, { tasks: null }, { tasks: 'missing' }, { tasks: [], error: 'read failed' },
+    { tasks: [], available: false }, { tasks: [], complete: false },
+    { tasks: [], truncated: true }, { tasks: [], projection: { omitted_fields: ['$.tasks'] } }]) {
+    t.mock.method(f.client, 'list', async () => raw)
+    const { value } = unpack(await f.run({ action: 'tasks' }))
+    assert.equal(value.task_page?.complete, false)
+    assert.equal(value.task_page?.source_complete, false)
+    if (!Array.isArray(raw.tasks)) {
+      assert.equal(value.task_page.available, false)
+      assert.equal(value.task_page.total, null)
+    }
+  }
+  t.mock.method(f.client, 'list', async () => ({ tasks: [] }))
+  const empty = unpack(await f.run({ action: 'tasks' })).value
+  assert.equal(empty.task_page.complete, true)
+  assert.equal(empty.task_page.total, 0)
+})
+
+test('repair: a submit connection fence is verified by native identity before dispatch', async t => {
+  const f = await fixture(t), other = await fixture(t)
+  const first = unpack(await f.run({ action: 'tasks' })).value
+  assert.match(first.connection_id ?? '', /^[a-f0-9]{64}$/)
+  t.mock.method(other.client, 'submit', () => assert.fail('Foreign connection must not consume a submission key'))
+  assert.equal(unpack(await other.run({ action: 'submit', args: {
+    key: 'original-key', query: 'original task', connection_id: first.connection_id,
+  } })).ok, false)
+  const calls = []
+  t.mock.method(f.client, 'submit', async (args, execution) => {
+    calls.push({ args, execution })
+    return { task_ref: REF, submission: 'unconfirmed' }
+  })
+  assert.equal(unpack(await f.run({ action: 'submit', args: {
+    key: 'original-key', query: 'original task', connection_id: first.connection_id,
+  } })).ok, true)
+  assert.deepEqual(calls[0].args, { key: 'original-key', query: 'original task' })
+  assert.equal(calls[0].execution.sessionId, 'workbench-agent')
+})

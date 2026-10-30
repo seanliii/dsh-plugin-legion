@@ -176,6 +176,10 @@ window.__ModuleLoader__.load({
     function createController(ctx, options = {}) {
       let disposed = false
       let epoch = 0
+      let connectionEpoch = 0
+      let connectionId = null
+      let connectionReadSequence = 0
+      let acceptedConnectionRead = 0
       let form
       let formOwner
       let stopForm
@@ -194,7 +198,7 @@ window.__ModuleLoader__.load({
         available: {}, busy: {}, errors: {}, members: null, search: null, source: null,
         packages: null, plugins: null, config: null, configEntry: null, configNamespace: null, configSaved: false,
         inspection: null, installResult: null, installId: null, installUncertain: false, installCancellation: null,
-        tasks: null, taskStatus: null, taskStatusStale: false, download: null, operation: null, submission: null,
+        tasks: null, tasksStale: false, taskStatus: null, taskStatusStale: false, download: null, operation: null, submission: null,
         flow: null, flowStale: false, flowRunKey: null, modelStatus: null,
       }
       const publish = patch => {
@@ -212,16 +216,53 @@ window.__ModuleLoader__.load({
         }
         publish({ busy, errors, ...patch })
       }
+      const operationId = (sessionId, connection = connectionId) => connection ? JSON.stringify([sessionId, connection]) : null
+      const operationView = sessionId => ({ operation: operations.get(operationId(sessionId)) || null,
+        submission: submissions.get(operationId(sessionId)) || null })
       const clearTaskView = () => {
+        connectionEpoch++
+        connectionId = null
         statusRead = null
-        invalidate(['tasks', 'taskStatus', 'download'],
-          { tasks: null, taskStatus: null, taskStatusStale: false, download: null })
+        // Hide observations, not recovery records. Old unknown operations remain
+        // indexed by their authenticated Host connection until it is read again.
+        invalidate(['tasks', 'taskStatus', 'download', 'submit', 'members'],
+          { tasks: null, tasksStale: false, taskStatus: null, taskStatusStale: false, download: null,
+            members: null, operation: null, submission: null })
+      }
+      const acceptConnection = (value, sessionId, readSequence) => {
+        if (typeof value?.connection_id !== 'string' || !/^[a-f0-9]{64}$/.test(value.connection_id)) {
+          throw new Error('无法确认原生恢复身份；请重新读取战队任务，原操作记录仍保留。 / Native recovery identity is unknown; read Team tasks again.')
+        }
+        // Even the first accepted identity supersedes older reads. A failed
+        // newer read does not advance this successful-read watermark.
+        acceptedConnectionRead = readSequence
+        if (connectionId && connectionId !== value.connection_id) {
+          // Even unchanged public settings can resolve to a different native
+          // credential/index. Invalidate older reads before accepting this one.
+          connectionEpoch++
+          statusRead = null
+          invalidate(['submit', 'taskStatus', 'download', 'members'], {
+            tasks: null, tasksStale: false, taskStatus: null, taskStatusStale: false, download: null,
+            members: null, operation: null, submission: null,
+          })
+        }
+        connectionId = value.connection_id
+        return operationView(sessionId)
+      }
+      const disconnectConfig = () => {
+        clearTaskView()
+        invalidate(['config', 'configSave', 'flowStatus'], { flow: null, flowStale: false, flowRunKey: null })
+        stopForm?.()
+        stopForm = null
+        form = null
+        formOwner = null
+        publish({ config: null, configEntry: null, configNamespace: null, configSaved: false })
       }
       const observeConfig = (config, entryId = state.configEntry, namespace = state.configNamespace) => {
         // Retained observations are scoped to the native connection too, not
         // just the selected session/task. These are references, never tokens.
         if (entryId !== state.configEntry || namespace !== state.configNamespace
-          || ['baseUrl', 'tokenEnv', 'tokenFile'].some(key => config?.value?.[key] !== state.config?.value?.[key])) {
+          || ['baseUrl', 'tokenEnv', 'tokenFile', 'stateDirectory'].some(key => config?.value?.[key] !== state.config?.value?.[key])) {
           clearTaskView()
         }
         if (entryId !== state.configEntry || namespace !== state.configNamespace
@@ -282,7 +323,9 @@ window.__ModuleLoader__.load({
         return typeof navigator !== 'undefined' && navigator.locks?.request
           ? navigator.locks.request(pendingStorageKey, work) : work()
       }
-      const forgetNote = note => editNotes(notes => ({ notes: notes.filter(row => !sameNote(row, note)) }))
+      const forgetNote = (note, current = () => true) => editNotes(notes => current()
+        ? { notes: notes.filter(row => !sameNote(row, note)), value: true }
+        : { notes, value: false })
       const captureConfig = () => {
         if (!state.sessionId || state.config?.status !== 'ready' || !record(state.config.value)
           || !state.configEntry || !state.configNamespace || !services.configuration) {
@@ -341,13 +384,20 @@ window.__ModuleLoader__.load({
       const flowSettled = outcome => outcome?.code === 'ok' && outcome.catalogVerified === true
         && outcome.partial !== true && outcome.cancelled !== true
       async function executeNote(note, view) {
-        if (!viewCurrent(view)) return
-        if (!readNotes().some(row => sameNote(row, note))) return // A pause or newer explicit setup withdrew it.
+        const current = () => viewCurrent(view) && readNotes().some(row => sameNote(row, note))
+        if (!current()) return // A pause or newer explicit setup may have withdrawn it.
         if (note.action === 'flow_run') publish({ flowRunKey: note.runKey })
-        const outcome = await command(view.sessionId, note.action, note.action === 'flow_run' ? { key: note.runKey } : {})
-        if (viewCurrent(view)) publish({ flow: outcome, flowStale: false })
+        let outcome
+        try {
+          outcome = await command(view.sessionId, note.action, note.action === 'flow_run' ? { key: note.runKey } : {}, current)
+        } catch (error) {
+          if (!viewCurrent(view)) return
+          throw error
+        }
+        if (!current()) return
+        publish({ flow: outcome, flowStale: false })
         if (flowSettled(outcome)) {
-          await forgetNote(note)
+          if (!await forgetNote(note, current)) return
           if (viewCurrent(view) && note.action === 'flow_run') publish({ flowRunKey: null })
         }
         return viewCurrent(view) ? outcome : undefined
@@ -374,9 +424,10 @@ window.__ModuleLoader__.load({
         }
         return false
       }
-      async function command(sessionId, action, args = {}) {
+      async function command(sessionId, action, args = {}, current = () => true) {
         return ctx.sessions.using(sessionId, { source: 'controllerOperation' }, async reference => {
           await reference.ready
+          if (!current()) throw new Error('命令归属已变化；未通过新连接发送旧操作 / Command ownership changed')
           const response = remoteValue(await ctx.remote.commands.execute(
             sessionId, `/legion-panel ${JSON.stringify({ action, args })}`, [],
           ))
@@ -500,21 +551,13 @@ window.__ModuleLoader__.load({
           for (const key of Object.keys(services)) delete services[key]
         },
         attach(key, value) {
-          if (key === 'configuration' && services[key] && services[key] !== value) clearTaskView()
+          if (key === 'configuration' && services[key] && services[key] !== value) disconnectConfig()
           services[key] = value
           publish({ available: { ...state.available, [key]: true } })
           return () => {
             if (services[key] !== value) return
             delete services[key]
-            if (key === 'configuration') {
-              clearTaskView()
-              invalidate(['config', 'configSave'])
-              stopForm?.()
-              stopForm = null
-              form = null
-              formOwner = null
-              publish({ config: null, configEntry: null, configNamespace: null, configSaved: false })
-            }
+            if (key === 'configuration') disconnectConfig()
             publish({ available: { ...state.available, [key]: false } })
           }
         },
@@ -529,8 +572,8 @@ window.__ModuleLoader__.load({
             busy[key] = false
             errors[key] = null
           }
-          publish({ sessionId, busy, errors, members: null, search: null, source: null, tasks: null,
-            taskStatus: null, taskStatusStale: false, download: null, operation: operations.get(sessionId) || null, submission: submissions.get(sessionId) || null,
+          publish({ sessionId, busy, errors, members: null, search: null, source: null, tasks: null, tasksStale: false,
+            taskStatus: null, taskStatusStale: false, download: null, ...operationView(sessionId),
             flow: null, flowStale: false, flowRunKey: null, modelStatus: null })
         },
         async refreshSessions() {
@@ -786,8 +829,19 @@ window.__ModuleLoader__.load({
             return { installResult: result }
           }).then(() => controller.loadPackages())
         },
-        loadTasks() {
-          return run('tasks', async id => ({ tasks: await command(id, 'tasks') }), true)
+        loadTasks(offset = 0, snapshot) {
+          if (disposed || state.busy.tasks) return Promise.resolve(false)
+          const observedEpoch = epoch, observedConnection = connectionEpoch
+          const current = () => !disposed && epoch === observedEpoch && connectionEpoch === observedConnection
+          publish({ tasksStale: state.tasks !== null })
+          return run('tasks', async id => {
+            const readSequence = ++connectionReadSequence
+            const currentRead = () => current() && readSequence >= acceptedConnectionRead
+            const tasks = await command(id, 'tasks', offset > 0 ? { offset, snapshot } : {}, currentRead)
+              .catch(error => { if (currentRead()) throw error })
+            if (!currentRead()) return
+            return { tasks, tasksStale: false, ...acceptConnection(tasks, id, readSequence) }
+          }, true)
         },
         taskStatus(task_ref, options = {}) {
           // Claim before publishing: invalidation resets busy, and a retained
@@ -839,37 +893,63 @@ window.__ModuleLoader__.load({
           }, true)
         },
         submit(query, context) {
+          const observedEpoch = epoch, observedConnection = connectionEpoch
+          const current = () => !disposed && epoch === observedEpoch && connectionEpoch === observedConnection
           return run('submit', async id => {
-            if (!query.trim()) throw new Error('请写下想得到的能力 / Describe the capability you need')
-            let operation = operations.get(id)
+            if (!query.trim()) throw new Error('请写下想得到的成果 / Describe the outcome you need')
+            // Read the existing authenticated recovery index before choosing a
+            // key. Public config values cannot prove which credential is active.
+            const readSequence = ++connectionReadSequence
+            const currentRead = () => current() && readSequence >= acceptedConnectionRead
+            const binding = await command(id, 'tasks', { limit: 1 }, currentRead)
+              .catch(error => { if (currentRead()) throw error })
+            if (!currentRead()) return
+            publish(acceptConnection(binding, id, readSequence))
+            if (!current()) {
+              if (!disposed && state.sessionId === id && connectionId === binding.connection_id) {
+                setError('submit', '核心身份已变化；本次未提交，请核对战队任务后重试 / Native identity changed; review Team tasks before retrying')
+              }
+              return
+            }
+            const connection = connectionId, owner = operationId(id, connection)
+            const ownsView = () => current() && state.sessionId === id && connectionId === connection
+            let operation = operations.get(owner)
+            if (operation?.pending) throw new Error('原连接的提交仍在等待回执；不能并发补发 / Original submission is still pending')
             if (operation && (operation.query !== query || operation.context !== context)) {
               throw new Error('上一单仍有记录；请先查看原任务，或明确开始另一单 / Check the original task before starting another')
             }
             operation ||= { key: crypto.randomUUID(), query, context }
-            operations.set(id, operation)
+            operations.set(owner, operation)
+            operation.pending = true
             publish({ operation })
             let receipt, failure
             try {
-              receipt = await command(id, 'submit', { key: operation.key, query, ...(context ? { context } : {}) })
+              receipt = await command(id, 'submit', { key: operation.key, query, ...(context ? { context } : {}),
+                connection_id: connection }, ownsView)
             } catch (error) {
               receipt = error.receipt
               failure = error
+            } finally {
+              operation.pending = false
             }
-            if (receipt && !disposed && operations.get(id)?.key === operation.key) {
-              operation = { ...operation, ref: receipt.task_ref }
-              operations.set(id, operation)
-              submissions.set(id, receipt)
-              // Success and rejection share the same session/operation fence.
-              if (state.sessionId === id) publish({ submission: receipt, operation })
+            if (receipt && !disposed && operations.get(owner) === operation) {
+              operation.ref = receipt.task_ref
+              submissions.set(owner, receipt)
+            }
+            // Late replies still update their original recovery record, but
+            // neither receipts nor failures may decorate a different connection.
+            if (!disposed && state.sessionId === id && connectionId === connection && operations.get(owner) === operation) {
+              publish({ ...operationView(id), errors: { ...state.errors, submit: failure ? errorText(failure) : null } })
             }
             if (failure) throw failure
           }, true)
         },
         newTask() {
-          if (state.busy.submit || (state.operation && !state.operation.ref)) return
+          const owner = operationId(state.sessionId), operation = operations.get(owner)
+          if (state.busy.submit || operation?.pending || (operation && !operation.ref)) return
           invalidate(['submit'])
-          operations.delete(state.sessionId)
-          submissions.delete(state.sessionId)
+          operations.delete(owner)
+          submissions.delete(owner)
           publish({ operation: null, submission: null })
         },
       }
@@ -1717,7 +1797,7 @@ window.__ModuleLoader__.load({
           h(Outcome, { result: state.installResult }),
           h('section', { className: 'legion-section legion-form' },
             h('h2', null, t('告诉军团，你最后想拿到什么', 'Tell Legion what you want to receive')),
-            h(Field, { title: t('可编辑的接入任务', 'Editable integration task'),
+            h(Field, { title: t('可编辑的战队任务', 'Editable team task'),
               hint: t('提交会使用你已配置的核心与模型，可能产生费用。不会仅凭仓库文字自动安装。', 'Submission uses your configured core and models and may incur costs. Repository text never triggers an automatic install.') },
               h('textarea', { value: state.operation?.query ?? goal, disabled: !!state.operation,
                 placeholder: t('我希望这个项目提供哪些能力？给谁用？怎样才算真的可用？', 'Which capabilities, for whom, and what should genuinely working look like?'),
@@ -1726,7 +1806,7 @@ window.__ModuleLoader__.load({
             h('div', { className: 'legion-row' },
               h(Button, { primary: true, disabled: !state.sessionId || !(state.operation?.query ?? goal).trim() || busy('submit'),
                 onClick: () => controller.submit(state.operation?.query ?? goal, state.operation?.context ?? sourceContext) },
-              busy('submit') ? t('正在提交…', 'Submitting…') : state.operation && !state.operation.ref ? t('用原编号重试这一单', 'Retry with the original key') : t('交给军团接入', 'Delegate integration')),
+              busy('submit') ? t('正在提交…', 'Submitting…') : state.operation && !state.operation.ref ? t('用原编号重试这一单', 'Retry with the original key') : t('交给战队处理', 'Delegate to team')),
               state.operation?.ref ? h(Button, { onClick: () => controller.newTask() }, t('开始另一单', 'Start another task')) : null),
             error('submit'),
             state.operation && h('p', { className: 'legion-help' }, t('本次去重编号：', 'Idempotency key: '), h('code', null, state.operation.key)),
@@ -1741,18 +1821,36 @@ window.__ModuleLoader__.load({
           renderPackages())
 
         const renderTasks = () => h(React.Fragment, null,
-          h('div', { className: 'legion-row between' }, h('h2', null, t('每项接入都有原任务可追', 'Follow each integration back to its task')),
-            h(Button, { disabled: !state.sessionId || busy('tasks'), onClick: () => controller.loadTasks() }, t('刷新任务列表', 'Refresh tasks'))),
-          h('p', { className: 'legion-help' }, t('列表来自本会话的恢复索引。点击一项再查实时状态；done、文件导出和体验验收分别查看。', 'This list is the session recovery index. Open a task for live facts; done, exports and experience verification remain separate.')),
+          h('div', { className: 'legion-row between' }, h('h2', null, t('战队任务', 'Team tasks')),
+            h(TaskReadButton, { disabled: !state.sessionId, busy: busy('tasks'), onClick: () => controller.loadTasks() }, t('刷新任务列表', 'Refresh tasks'))),
+          h('p', { className: 'legion-help' }, t('列表来自当前连接、本会话的恢复索引。切回原连接并刷新，可找回原操作身份；done、文件导出和体验验收分别查看。', 'This is the current connection and session recovery index. Restore the original connection and refresh to recover its operation; done, exports and acceptance remain separate.')),
           error('tasks'), status('tasks'),
-          state.tasks && !rows(state.tasks.tasks).length ? h(Empty, null, t('本会话尚无军团任务。', 'No Legion tasks in this session.')) : null,
-          h('div', { className: 'legion-list' }, ...rows(state.tasks?.tasks).map(task => h('article', { className: 'legion-task', key: task.task_ref },
+          state.tasksStale ? h('p', { role: 'status', className: 'legion-callout' }, t('保留的是旧任务列表，尚非最新；请刷新第一页核对。', 'Retained task list is not current; refresh the first page.')) : null,
+          state.tasks && state.tasks.task_page?.available !== true ? h(Empty, null,
+            t('无法确认任务列表；这不是已确认的空列表。请重试原生读取。', 'Task list unavailable; not known empty. Retry the native read.')) : null,
+          state.tasks?.task_page?.complete === true && state.tasks.task_page.total === 0 && !state.tasksStale
+            ? h(Empty, null, t('本会话尚无军团任务。', 'No Legion tasks in this session.')) : null,
+          state.tasks?.task_page?.available === true ? h('div', { className: 'legion-callout' },
+            h('p', null, t(`本页 ${state.tasks.task_page.shown_count} 条；起始位置 ${state.tasks.task_page.offset}；已观察总数 ${state.tasks.task_page.total}。`,
+              `This page: ${state.tasks.task_page.shown_count}; offset ${state.tasks.task_page.offset}; observed total ${state.tasks.task_page.total}.`)),
+            state.tasks.task_page.source_complete !== true ? h('p', null, t('任务索引不完整；已观察记录之外仍有未知，不能据此断言不存在。', 'Task index is incomplete; unobserved records are unknown, not absent.')) : null,
+            state.tasks.truncated ? h('p', null, t('当前显示部分记录或缩略字段；续读不会跳过未显示的记录。', 'Showing a partial list or shortened fields; continuation does not skip undisplayed rows.')) : null,
+            h('div', { className: 'legion-toolbar' },
+              state.tasks.task_page.offset > 0 ? h(TaskReadButton, { busy: busy('tasks'), onClick: () => controller.loadTasks() },
+                t('返回任务首页', 'Back to first task page')) : null,
+              Number.isSafeInteger(state.tasks.task_page.next_offset) && state.tasks.task_page.next_offset > state.tasks.task_page.offset
+                ? h(TaskReadButton, { busy: busy('tasks'), disabled: state.tasksStale,
+                  onClick: () => controller.loadTasks(state.tasks.task_page.next_offset, state.tasks.task_page.snapshot) },
+                t('下一页任务', 'Next task page')) : null)) : null,
+          h('div', { className: 'legion-list' }, ...rows(state.tasks?.tasks).map((task, index) => h('article', { className: 'legion-task', key: task?.task_ref || `unknown-${index}` },
             h('div', { className: 'legion-row between' },
-              h('div', null, h('strong', null, task.key), h('code', { className: 'legion-muted' }, task.task_ref)),
-              h(Button, { disabled: busy('taskStatus'), 'aria-controls': 'legion-task-status',
-                onClick: () => readTaskStatus(task.task_ref) }, t('读取实时进度', 'Read live progress'))),
-            taskRead?.sessionId === state.sessionId && taskRead.taskRef === task.task_ref ? status('taskStatus') : null,
-            h('p', { className: 'legion-help' }, task.created_at)))),
+              h('div', null, h('strong', null, task?.key || t('任务记录不可用', 'Task record unavailable')), h('code', { className: 'legion-muted' }, task?.task_ref)),
+              typeof task?.task_ref === 'string' && /^[a-f0-9]{32}$/.test(task.task_ref)
+                ? h(Button, { disabled: busy('taskStatus') || state.tasksStale, 'aria-controls': 'legion-task-status',
+                  onClick: () => readTaskStatus(task.task_ref) }, t('读取实时进度', 'Read live progress'))
+                : h('p', null, t('未提供可用任务引用，不能读取状态。', 'No usable task reference; status is unavailable.'))),
+            taskRead?.sessionId === state.sessionId && taskRead.taskRef === task?.task_ref ? status('taskStatus') : null,
+            h('p', { className: 'legion-help' }, task?.created_at)))),
           h('section', { id: 'legion-task-status', ref: taskStatusRegion, tabIndex: -1,
             'aria-label': t('原任务状态', 'Original task status'), 'aria-busy': busy('taskStatus') },
             error('taskStatus'), status('taskStatus'),
@@ -1798,9 +1896,9 @@ window.__ModuleLoader__.load({
           h('div', { className: 'legion-wrap' },
             h('header', { className: 'legion-top' },
               h('div', null, h('div', { className: 'legion-eyebrow' }, 'LEGION / DSH'),
-                h('h1', null, t('一个目标，一支共同进化的战队', 'One goal. A team that grows together.')),
-                h('p', { className: 'legion-lead' }, t('让各路 Harness 一起做成你的事。围绕同一作品协作，工具相互借用，有效改进留给下一次工作。',
-                  'Bring leading harnesses to the same work. Collaborate on one outcome, share tools and carry useful improvements into the next task.'))),
+                h('h1', null, t('顶尖战队，共同进化', 'Leading harnesses. Growing together.')),
+                h('p', { className: 'legion-lead' }, t('集结各路优秀 Harness，协作完成同一个目标。以顶级成果为参照，反复对比、验证和改进；工具与有效经验为下一次工作所用。',
+                  'Bring leading harnesses to one goal. Compare real work with strong references, verify and improve; carry useful tools and experience into the next task.'))),
               h('label', { className: 'legion-session' }, h('span', { className: 'legion-help' }, t('当前工作会话', 'Working session')),
                 h('select', { value: state.sessionId, 'aria-label': t('当前工作会话', 'Working session'), onChange: event => selectSession(event.target.value) },
                   h('option', { value: '' }, t('请选择会话', 'Select a session')),
@@ -1811,7 +1909,7 @@ window.__ModuleLoader__.load({
             h('nav', { className: 'legion-tabs', role: 'tablist', 'aria-label': t('军团工作台', 'Legion workbench') },
               ...[
                 ['members', t('我的军团', 'My Legion')], ['search', t('找能力', 'Discover')], ['add', t('添加能力', 'Add capabilities')],
-                ['tasks', t('接入任务', 'Integration tasks')], ['config', t('连接与配置', 'Connection')],
+                ['tasks', t('战队任务', 'Team tasks')], ['config', t('连接与配置', 'Connection')],
               ].map(([id, label]) => h(Button, { role: 'tab', key: id, 'aria-selected': tab === id,
                 'aria-controls': `legion-tab-${id}`, onClick: () => openTab(id) }, label))),
             h('div', { id: `legion-tab-${tab}`, role: 'tabpanel' },
