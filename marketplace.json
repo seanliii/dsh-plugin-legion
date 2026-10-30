@@ -16,8 +16,8 @@
         "zh": "军团 · Harness 协同进化战队"
       },
       "description": {
-        "en": "Choose companions and collaboration style, then start native DSH initial and weekly work for discovery, cooperation and improvement. Includes durable recovery, pause, shared tools and source adaptation. Users configure their own models and optional Legion core; scheduling is not proof of improvement.",
-        "zh": "选择战友与协作方式，一次组队自动开启首轮和每周发现、协作与改进。提供持久恢复、暂停、开放工具和源码适配；使用自己的模型及按需安装的军团核心，任务安排不冒充改进成功。"
+        "en": "One goal, a co-evolving team. Choose companions, share capabilities and keep improving the same work. See DSH author and core-member facts separately; retain task continuity and native schedules. Bring your own models and optional core. Technical preview, not a claim of universal autonomy.",
+        "zh": "一个目标，一支共同进化的战队。选择战友，互用能力，持续改进同一作品；分别看清DSH作者与核心成员状态，保留原任务接续和原生自动安排。使用自己的模型及按需安装的核心；技术预览，不宣称全团无人自治。"
       },
       "icon": "icon.svg",
       "author": "seanliii",
@@ -26,6 +26,18 @@
         "url": "https://github.com/seanliii/dsh-plugin-legion"
       },
       "versions": [
+        {
+          "version": "0.5.1",
+          "publishTimestamp": 1793371862,
+          "source": {
+            "type": "git",
+            "url": "https://github.com/seanliii/dsh-plugin-legion.git",
+            "commit": "cb3eca2108d09456a2cbb973afe5da7406c0cf06"
+          },
+          "engines": {
+            "dsh": "0.2.1-rc.2"
+          }
+        },
         {
           "version": "0.5.0",
           "publishTimestamp": 1793358402,

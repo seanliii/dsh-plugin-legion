@@ -11,11 +11,11 @@ function memoryStorage() {
     removeItem: key => values.delete(key) }
 }
 
-async function helpers() {
+async function helpers(globals = {}) {
   let definition
   const realm = createContext({
     window: { localStorage: memoryStorage(), __ModuleLoader__: { load(value) { definition = value } } },
-    URL, AbortController, DOMException, TextEncoder, console, crypto: webcrypto,
+    URL, AbortController, DOMException, TextEncoder, console, crypto: webcrypto, ...globals,
   })
   runInContext(await readFile(new URL('../client/index.js', import.meta.url), 'utf8'), realm)
   const plugin = definition.factory(() => assert.fail('Pure helpers do not import another browser plugin'))
@@ -49,6 +49,8 @@ test('member presentation preserves unknown installation and separate observed r
   assert.equal(memberFacts({ key: 'tools-only', available: true,
     entry_points: { execution: { selectable: false } } }).selectable, false)
   assert.equal(memberFacts({ key: 'untyped', installed: 'yes', available: 'ready' }).installed, null)
+  assert.equal(memberFacts({ key: 'untyped' }).selectable, null,
+    'Missing execution facts are unknown, not a declaration that this is a tool-only source')
 })
 
 test('untrusted result links never become script, file or credential links', async () => {
@@ -104,6 +106,19 @@ function context(execute) {
 const reply = (action, value) => ({ ok: true,
   value: { result: { kind: 'success', text: JSON.stringify({ ok: true, action, value }) } } })
 
+// Submission fixtures explicitly model the new read-only native identity read;
+// their callbacks still count actual submits, not the preceding index read.
+function submissionContext(execute) {
+  return context(async (id, line, ...rest) => {
+    const { action, args } = JSON.parse(line.slice('/legion-panel '.length))
+    if (action === 'tasks') {
+      assert.deepEqual(args, { limit: 1 })
+      return reply('tasks', { tasks: [], connection_id: 'a'.repeat(64) })
+    }
+    return execute(id, line, ...rest)
+  })
+}
+
 const nativeReply = value => ({ ok: true, value })
 const turn = () => new Promise(resolve => setImmediate(resolve))
 function deferred() {
@@ -139,7 +154,7 @@ test('late command results cannot leak from a previous selected session', async 
 test('UI submits use one original key and never accept client-provided session authority', async () => {
   const { createController } = await helpers()
   const calls = []
-  const controller = createController(context(async (id, line) => {
+  const controller = createController(submissionContext(async (id, line) => {
     const body = JSON.parse(line.slice('/legion-panel '.length))
     calls.push({ id, ...body })
     if (calls.length === 1) throw new Error('response lost')
@@ -150,7 +165,8 @@ test('UI submits use one original key and never accept client-provided session a
   assert.equal(controller.getSnapshot().operation.ref, undefined)
   await controller.submit('Inspect this public project', 'Known source facts')
   assert.equal(calls[0].args.key, calls[1].args.key)
-  assert.deepEqual(Object.keys(calls[0].args).sort(), ['context', 'key', 'query'])
+  assert.deepEqual(Object.keys(calls[0].args).sort(), ['connection_id', 'context', 'key', 'query'])
+  assert.equal(calls[0].args.connection_id, 'a'.repeat(64))
   assert.equal(controller.getSnapshot().operation.ref, 'returned-task')
   controller.dispose()
 })
@@ -259,7 +275,7 @@ test('an unloaded configuration service cannot install a late form subscription'
 test('switching sessions retains an unconfirmed submission key only for its original session', async () => {
   const { createController } = await helpers()
   const calls = []
-  const controller = createController(context(async (id, line) => {
+  const controller = createController(submissionContext(async (id, line) => {
     const body = JSON.parse(line.slice('/legion-panel '.length))
     calls.push({ id, ...body })
     if (calls.length === 1) throw new Error('Reply disconnected after dispatch')
@@ -281,7 +297,7 @@ test('switching sessions retains an unconfirmed submission key only for its orig
 test('a late submission receipt is recoverable in the originating session, never another', async () => {
   const { createController } = await helpers()
   let release
-  const controller = createController(context(() => new Promise(done => { release = done })))
+  const controller = createController(submissionContext(() => new Promise(done => { release = done })))
   controller.selectSession('a')
   const pending = controller.submit('Inspect a public project', '')
   await new Promise(done => setImmediate(done))
@@ -428,6 +444,9 @@ test('rejected submission keeps its recovery reference and permits only an expli
   const taskRef = 'a'.repeat(32)
   const client = {
     clean: value => value, redactText: value => value,
+    scope(execution) { assert.equal(execution.sessionId, 'a') },
+    store: { service: 'a'.repeat(64), root: '/synthetic/index' },
+    async list() { return { tasks: [] } },
     async submit(args) {
       calls.push(args)
       if (calls.length === 1) throw new Error('403 permission_denied')
@@ -562,7 +581,7 @@ test('a late configuration save cannot publish an old form under a new entry', a
 test('a late rejected submission is retained in its own session and never published in another', async t => {
   const { createController } = await helpers()
   const pending = deferred()
-  const controller = createController(context(() => pending.promise))
+  const controller = createController(submissionContext(() => pending.promise))
   t.after(() => controller.dispose())
   controller.selectSession('a')
   const saving = controller.submit('Public task', '')
@@ -876,7 +895,7 @@ test('artifact presentation never converts missing or partial observations into 
 test('status paging carries only read cursors and clears stale task facts on a failed read', async t => {
   const { createController } = await helpers()
   const calls = []
-  const controller = createController(context(async (id, line) => {
+  const controller = createController(submissionContext(async (id, line) => {
     const body = JSON.parse(line.slice('/legion-panel '.length))
     calls.push({ id, ...body })
     if (calls.length === 2) throw new Error('status unavailable')
@@ -926,7 +945,7 @@ test('downloads reuse the native human command with an observed id, never a retu
 // In-process projection, not browser acceptance. Keep React child slots/keys
 // and model the native disabled/removal focus loss observed on DSH 50935.
 async function statusPanel(t, status, { taskCount = 1, reducedMotion = false, membersError,
-  locale = 'zh', readTask = true, memberRows = [], modelCatalog, configValue, flow } = {}) {
+  locale = 'zh', readTask = true, memberRows = [], memberReply, modelCatalog, configValue, flow, taskReply } = {}) {
   let definition, Page, cursor = 0
   const label = (zh, en) => locale === 'zh' ? zh : en
   const slots = [], cleanups = [], calls = [], effects = [], focusCalls = [], scrollCalls = []
@@ -987,12 +1006,23 @@ async function statusPanel(t, status, { taskCount = 1, reducedMotion = false, me
       }
       const { action, args } = JSON.parse(line.slice('/legion-panel '.length))
       if (action === 'runtime' && membersError) throw new Error(membersError)
+      if (action === 'runtime' && memberReply) return reply(action,
+        typeof memberReply === 'function' ? await memberReply(id, args) : memberReply)
       if (action.startsWith('flow_')) return reply(action, typeof flow === 'function' ? await flow(id, action, args) : flow)
-      return reply(action, action === 'status' ? typeof status === 'function' ? await status(id, args) : status
-        : action === 'tasks' ? { tasks: Array.from({ length: taskCount }, (_, index) => ({
+      if (action === 'tasks') {
+        if (taskReply) return reply(action, await taskReply(id, args))
+        const offset = args.offset ?? 0, limit = args.limit ?? 30
+        const tasks = Array.from({ length: taskCount }, (_, index) => ({
           task_ref: index ? index.toString(16).padStart(32, '0') : STATUS_REF, key: `synthetic-task-${index}`,
-        })) }
-          : { runtime: { harnesses: memberRows } })
+        })).slice(offset, offset + limit)
+        const next = offset + tasks.length < taskCount ? offset + tasks.length : null
+        return reply(action, { tasks, connection_id: 'a'.repeat(64), task_page: {
+          available: true, total: taskCount, offset, shown_count: tasks.length, next_offset: next,
+          snapshot: 'c'.repeat(64), source_complete: true, complete: offset === 0 && next === null,
+        } })
+      }
+      return reply(action, action === 'status' ? typeof status === 'function' ? await status(id, args) : status
+        : { runtime: { harnesses: memberRows } })
     }),
     locale: { resolveText(value) { return value[locale] } },
     layout: { selectPanel() {} },
@@ -1096,7 +1126,7 @@ async function statusPanel(t, status, { taskCount = 1, reducedMotion = false, me
   find('select', label('当前工作会话', 'Working session')).props.onChange({ target: { value: 'a' } })
   await turn()
   if (readTask) {
-    find('button', label('接入任务', 'Integration tasks')).props.onClick()
+    find('button', label('战队任务', 'Team tasks')).props.onClick()
     await turn()
     find('button', label('读取实时进度', 'Read live progress')).props.onClick()
     await turn()
@@ -1175,6 +1205,148 @@ const flowProfile = {
 async function settleFlowPanel(panel) {
   for (let i = 0; i < 5; i++) { panel.render(); await turn() }
 }
+
+test('team overview separates the native author model from cached selected-core configuration facts', async t => {
+  const panel = await statusPanel(t, {}, { readTask: false,
+    configValue: { teamProfile: flowProfile, candidateHarnesses: ['codex'] },
+    modelCatalog: { default: { provider: 'fixture', model: 'author-model' },
+      groups: [{ id: 'fixture', models: [{ id: 'author-model' }] }], failures: [] },
+    memberReply: { runtime: { harnesses: [], stale: true },
+      selected: { mode: 'configured', total: 1, shown_count: 1, complete: true, items: [
+        { key: 'codex', display_name: 'Codex', observed: true,
+          model: { configured: false, configuration_error: 'explicit_responses_not_configured' },
+          readiness: { verified: false, historical_verified: true },
+          entry_points: { execution: { selectable: true } } },
+      ] } },
+    flow: { code: 'ok', catalogVerified: true, enabled: false, schedules: [] },
+  })
+  await settleFlowPanel(panel)
+  const content = panel.text(panel.render())
+  assert.match(content, /DSH.*作者/)
+  assert.match(content, /author-model/)
+  assert.match(content, /Codex/)
+  assert.match(content, /核心回报.*模型未配置/)
+  assert.match(content, /explicit_responses_not_configured/)
+  assert.match(content, /缓存/)
+  assert.match(content, /历史.*不代表.*当前/)
+  assert.ok(panel.find('button', '刷新战队状态'))
+  assert.ok(panel.find('button', '打开工作会话，看实际结果'))
+  assert.equal(panel.calls.filter(call => /"action":"(?:submit|flow_run|flow_start)"/.test(call.line)).length, 0,
+    'Reading team facts must not start charged work or schedules')
+})
+
+test('a missing selected member and an untyped catalog row stay visible as unknown, not absent or tool-only', async t => {
+  const panel = await statusPanel(t, {}, { readTask: false,
+    configValue: { teamProfile: flowProfile, candidateHarnesses: ['not-observed'] },
+    memberReply: { runtime: { harnesses: [{ key: 'untyped', display_name: 'Unknown kind' }], public_catalog_only: true },
+      selected: { mode: 'configured', total: 1, shown_count: 1, complete: true,
+        items: [{ key: 'not-observed', observed: false }] } },
+    flow: { code: 'ok', catalogVerified: true, enabled: false, schedules: [] },
+  })
+  await settleFlowPanel(panel)
+  assert.match(panel.text(panel.render()), /not-observed/)
+  assert.match(panel.text(panel.render()), /本次未观察到/)
+  assert.match(panel.text(panel.render()), /公开目录/)
+  panel.find('button', '调整战队').props.onClick()
+  const content = panel.text(panel.render())
+  assert.match(content, /Unknown kind/)
+  assert.match(content, /执行身份未知/)
+  assert.doesNotMatch(content, /另有 1 个工具来源/)
+  const checkbox = panel.nodes(panel.render()).find(node =>
+    node.type === 'input' && node.props['aria-label'] === '选择成员 Unknown kind')
+  assert.equal(checkbox.props.disabled, true, 'Unknown selectability is visible but never grants selection')
+})
+
+test('member page controls request explicit offsets without concatenating unrelated snapshots', async t => {
+  const panel = await statusPanel(t, {}, { readTask: false,
+    memberReply: (_id, args) => ({
+      runtime: { harnesses: [{ key: `member-${args.offset || 0}`, entry_points: { execution: { selectable: true } } }] },
+      member_page: { offset: args.offset || 0, limit: 12, total: 25, shown_count: 1,
+        next_offset: (args.offset || 0) < 24 ? (args.offset || 0) + 12 : null, complete: false },
+    }),
+  })
+  await settleFlowPanel(panel)
+  panel.find('button', '下一页成员').props.onClick()
+  await settleFlowPanel(panel)
+  const content = panel.text(panel.render())
+  assert.match(content, /member-12/)
+  assert.doesNotMatch(content, /member-0(?:\D|$)/)
+  assert.ok(panel.calls.some(call => /"offset":12/.test(call.line)))
+})
+
+test('short member pages offer an honest return-to-first action rather than guessing a previous offset', async t => {
+  const panel = await statusPanel(t, {}, { readTask: false, memberReply: (_id, args) => ({
+    runtime: { harnesses: [{ key: `member-${args.offset || 0}`, entry_points: { execution: { selectable: true } } }] },
+    member_page: { offset: args.offset || 0, limit: 12, total: 9, shown_count: 1,
+      next_offset: args.offset === 3 ? 7 : args.offset === 7 ? null : 3, complete: false },
+  }) })
+  await settleFlowPanel(panel)
+  for (let i = 0; i < 2; i++) {
+    panel.find('button', '下一页成员').props.onClick()
+    await settleFlowPanel(panel)
+  }
+  assert.match(panel.text(panel.render()), /member-7/)
+  panel.find('button', '返回第一页成员').props.onClick()
+  await settleFlowPanel(panel)
+  assert.match(panel.text(panel.render()), /member-0/)
+  assert.equal(panel.find('button', '上一页成员'), undefined)
+})
+
+test('nested model errors remain text and historical verification is never assigned to the current configuration', async t => {
+  const row = { key: 'codex', observed: true, display_name: { unexpected: 'name' },
+    model: { configured: false, display_name: { wrong: true }, configuration_error: { code: 'nested-provider-error' } },
+    readiness: { verified: true }, entry_points: { execution: { selectable: true } } }
+  const panel = await statusPanel(t, {}, { readTask: false,
+    configValue: { teamProfile: flowProfile, candidateHarnesses: ['codex'] },
+    memberReply: { runtime: { harnesses: [row], stale: true },
+      selected: { items: [row], complete: true } },
+    flow: { catalogVerified: true, schedules: [] },
+  })
+  await settleFlowPanel(panel)
+  for (const node of panel.nodes(panel.render()).filter(node => ['code', 'h3'].includes(node.type))) {
+    for (const child of node.props.children) {
+      assert.ok(typeof child !== 'object' || child?.type,
+        'React cannot render an arbitrary service object as a child')
+    }
+  }
+  const content = panel.text(panel.render())
+  assert.match(content, /nested-provider-error/)
+  assert.match(content, /是否对应当前配置/)
+  assert.doesNotMatch(content, /此配置的执行验证/)
+})
+
+test('malformed member rows and missing identities do not crash the page or create a selectable companion', async t => {
+  const panel = await statusPanel(t, {}, { readTask: false, memberRows: [
+    null, 'broken-row', { display_name: 'Missing identity', entry_points: { execution: { selectable: true } } },
+  ] })
+  const content = panel.text(panel.render())
+  assert.match(content, /记录缺少身份|记录无法展示/)
+  const checkbox = panel.nodes(panel.render()).find(node =>
+    node.type === 'input' && node.props['aria-label'] === '选择成员 Missing identity')
+  assert.equal(checkbox.props.disabled, true)
+})
+
+test('a member response from an older connection or candidate configuration cannot populate the new team', async t => {
+  const { createController } = await helpers()
+  const request = deferred()
+  const controller = createController(context(() => request.promise))
+  t.after(() => controller.dispose())
+  const fixture = mappedConfiguration()
+  let notify, value = { baseUrl: 'https://one.example', candidateHarnesses: ['first'] }
+  fixture.form.getSnapshot = () => ({ status: 'ready', value, revision: 7, writable: true })
+  fixture.form.subscribe = listener => { notify = listener; return () => {} }
+  controller.attach('configuration', fixture.owner)
+  controller.selectSession('a')
+  await controller.loadConfig()
+  const loading = controller.loadMembers()
+  await turn()
+  value = { baseUrl: 'https://two.example', candidateHarnesses: ['second'] }
+  notify()
+  request.resolve(reply('runtime', { selected: { items: [{ key: 'first', observed: true }] } }))
+  await loading
+  assert.equal(controller.getSnapshot().members, null,
+    'The old response belongs to the old connection and candidate snapshot')
+})
 
 test('flow snapshots: global defaults never label an older session plan as having improvement switched off', async t => {
   const calls = []
@@ -1491,7 +1663,7 @@ test('task progress focus is not restored after leaving the task tab during a re
   await turn()
   panel.render()
   assert.equal(panel.focusCalls.length, 0)
-  panel.find('button', '接入任务').props.onClick()
+  panel.find('button', '战队任务').props.onClick()
   await turn()
   panel.render()
   assert.equal(panel.focusCalls.length, 0, 'Reopening the tab must not replay an old selection')
@@ -1943,5 +2115,524 @@ for (const example of [
     assert.equal(panel.find('button', downloadLabel).props.disabled, false)
     assert.equal(panel.focusCalls.length, focusCount, 'Refresh and paging must not steal focus')
     assert.equal(panel.scrollCalls.length, scrollCount, 'No synthetic scroll restoration is added')
+  })
+}
+
+for (const change of ['detach', 'replace']) {
+  test(`repair: ${change} invalidates pending member observations without cancelling a new owner`, async t => {
+    const { createController } = await helpers()
+    const old = deferred(), fresh = deferred()
+    let calls = 0
+    const controller = createController(context(async () => ++calls === 1 ? old.promise : fresh.promise))
+    t.after(() => controller.dispose())
+    controller.selectSession('a')
+    const detach = controller.attach('configuration', {})
+    const reading = controller.loadMembers()
+    await turn()
+    if (change === 'detach') detach()
+    else controller.attach('configuration', {})
+    assert.equal(controller.getSnapshot().members, null)
+    const replacement = controller.loadMembers()
+    await turn()
+    old.resolve(reply('runtime', { marker: 'OLD' }))
+    assert.equal(await reading, false)
+    assert.equal(controller.getSnapshot().members, null)
+    assert.equal(controller.getSnapshot().busy.members, true)
+    fresh.resolve(reply('runtime', { marker: 'NEW' }))
+    assert.equal(await replacement, true)
+    assert.equal(controller.getSnapshot().members.marker, 'NEW')
+  })
+}
+
+for (const outcome of ['accepted', 'rejected', 'lost']) {
+  test(`repair: ${outcome} submit receipts stay with their authenticated connection and original key`, async t => {
+    const { createController } = await helpers()
+    const fixture = mappedConfiguration(), pending = deferred(), calls = []
+    let connection = 'a'.repeat(64), notify
+    let config = { status: 'ready', writable: true, revision: 7, value: { baseUrl: 'https://old.invalid' } }
+    fixture.form.getSnapshot = () => config
+    fixture.form.subscribe = fn => { notify = fn; return () => {} }
+    const controller = createController(context(async (_id, line) => {
+      const { action, args } = JSON.parse(line.slice('/legion-panel '.length))
+      if (action === 'tasks') return reply(action, { tasks: [], connection_id: connection })
+      assert.equal(action, 'submit')
+      calls.push(args)
+      if (calls.length === 1) return pending.promise
+      return reply('submit', { task_ref: 'b'.repeat(32), submission: 'unconfirmed' })
+    }))
+    t.after(() => controller.dispose())
+    controller.attach('configuration', fixture.owner)
+    controller.selectSession('a')
+    await controller.loadConfig()
+    const original = controller.submit('same task', '')
+    await turn()
+    const key = calls[0]?.key
+    assert.ok(key)
+    config = { ...config, revision: 8, value: { baseUrl: 'https://new.invalid' } }
+    connection = 'b'.repeat(64)
+    notify()
+    assert.equal(controller.getSnapshot().operation, null)
+    await controller.submit('same task', '')
+    assert.notEqual(calls[1]?.key, key, 'A different connection must never reuse the old operation identity')
+    if (outcome === 'lost') pending.reject(new Error('old response unknown'))
+    else if (outcome === 'rejected') pending.resolve(nativeReply({ result: { kind: 'error', text: JSON.stringify({
+      ok: false, action: 'submit', error: 'old refusal', diagnostics: { task_ref: 'a'.repeat(32), submission: 'rejected' },
+    }) } }))
+    else pending.resolve(reply('submit', { task_ref: 'a'.repeat(32), submission: 'accepted' }))
+    await original
+    assert.equal(controller.getSnapshot().operation.ref, 'b'.repeat(32))
+    assert.equal(controller.getSnapshot().errors.submit, null)
+    config = { ...config, revision: 9, value: { baseUrl: 'https://old.invalid' } }
+    connection = 'a'.repeat(64)
+    notify()
+    await controller.loadTasks()
+    assert.equal(controller.getSnapshot().operation.key, key, 'Return to the old native identity restores the original operation')
+    if (outcome === 'lost') {
+      assert.equal(controller.getSnapshot().operation.ref, undefined)
+      controller.newTask()
+      assert.equal(controller.getSnapshot().operation.key, key, 'Unknown outcomes cannot be discarded')
+      await controller.submit('same task', '')
+      assert.equal(calls.at(-1).key, key)
+      assert.equal(calls.at(-1).connection_id, 'a'.repeat(64))
+    } else {
+      assert.equal(controller.getSnapshot().operation.ref, 'a'.repeat(32))
+      assert.equal(controller.getSnapshot().submission.submission, outcome)
+    }
+  })
+}
+
+test('repair: a connection change before native command readiness prevents stale submit dispatch', async t => {
+  const { createController } = await helpers()
+  const ready = deferred(), calls = []
+  const ctx = context(async (_id, line) => {
+    const body = JSON.parse(line.slice('/legion-panel '.length))
+    calls.push(body)
+    return reply('tasks', { tasks: [], connection_id: 'a'.repeat(64) })
+  })
+  let using = 0
+  ctx.sessions.using = async (sessionId, options, work) => work({ sessionId,
+    ready: ++using === 2 ? ready.promise : Promise.resolve() })
+  const controller = createController(ctx)
+  t.after(() => controller.dispose())
+  const detach = controller.attach('configuration', {})
+  controller.selectSession('a')
+  const submit = controller.submit('synthetic task', '')
+  await turn()
+  detach()
+  ready.resolve()
+  await submit
+  assert.ok(!calls.some(call => call.action === 'submit'), 'Never dispatch an old operation through a newly resolved command service')
+})
+
+test('repair: returning to an original connection cannot duplicate its pending submit and can observe its receipt', async t => {
+  const { createController } = await helpers()
+  const pending = deferred(), calls = []
+  const controller = createController(context(async (_id, line) => {
+    const { action, args } = JSON.parse(line.slice('/legion-panel '.length))
+    if (action === 'tasks') return reply(action, { tasks: [], connection_id: 'a'.repeat(64) })
+    calls.push(args)
+    return pending.promise
+  }))
+  t.after(() => controller.dispose())
+  const detach = controller.attach('configuration', {})
+  controller.selectSession('a')
+  const original = controller.submit('original task', '')
+  await turn()
+  const key = calls[0].key
+  detach()
+  controller.attach('configuration', {})
+  await controller.loadTasks()
+  assert.equal(controller.getSnapshot().operation.key, key)
+  await controller.submit('original task', '')
+  controller.newTask()
+  assert.equal(calls.length, 1)
+  assert.equal(controller.getSnapshot().operation.key, key)
+  pending.resolve(reply('submit', { task_ref: 'a'.repeat(32), submission: 'accepted' }))
+  await original
+  assert.equal(controller.getSnapshot().submission.task_ref, 'a'.repeat(32))
+  assert.equal(controller.getSnapshot().operation.pending, false)
+  assert.equal(controller.getSnapshot().errors.submit, null)
+})
+
+function finalFlowConfiguration(controller) {
+  const fixture = mappedConfiguration()
+  let notify
+  let value = { baseUrl: 'https://original.invalid', candidateHarnesses: [], teamProfile: flowProfile }
+  fixture.form.getSnapshot = () => ({ status: 'ready', value, revision: 7, writable: true })
+  fixture.form.subscribe = listener => { notify = listener; return () => {} }
+  controller.attach('configuration', fixture.owner)
+  return { change(baseUrl) { value = { ...value, baseUrl }; notify() } }
+}
+
+const savedFlowNotes = storage => JSON.parse(
+  storage.getItem('dsh-legion.pending-operations.v1') || '{"operations":[]}',
+).operations
+const settledFlow = { code: 'ok', catalogVerified: true, partial: false, cancelled: false, schedules: [] }
+
+for (const method of ['startFlow', 'runFlow']) {
+  test(`final-boundary: ${method} rechecks ownership after native readiness and preserves its original note`, async t => {
+    const { createController } = await helpers()
+    const ready = deferred(), entered = deferred(), storage = memoryStorage(), calls = []
+    const ctx = context(async (_id, line) => {
+      const input = JSON.parse(line.slice('/legion-panel '.length))
+      calls.push(input)
+      return reply(input.action, settledFlow)
+    })
+    ctx.sessions.using = async (id, _options, fn) => {
+      entered.resolve()
+      return fn({ sessionId: id, ready: ready.promise })
+    }
+    const controller = createController(ctx, { storage })
+    t.after(() => controller.dispose())
+    controller.selectSession('a')
+    const config = finalFlowConfiguration(controller)
+    await controller.loadConfig()
+    const pending = method === 'runFlow' ? controller.runFlow('original-run-key') : controller.startFlow()
+    await entered.promise
+    const originalNotes = savedFlowNotes(storage)
+    assert.equal(originalNotes.length, 1)
+    config.change('https://replacement.invalid')
+    ready.resolve()
+    assert.equal(await pending, false)
+    assert.equal(calls.length, 0, 'An old operation must not cross the wire through the replacement connection')
+    assert.deepEqual(savedFlowNotes(storage), originalNotes)
+    assert.equal(controller.getSnapshot().flow, null)
+    assert.equal(controller.getSnapshot().errors[method === 'runFlow' ? 'flowRun' : 'flowStart'], null)
+
+    config.change('https://original.invalid')
+    assert.equal(await controller[method](), true)
+    assert.equal(calls.length, 1)
+    if (method === 'runFlow') assert.equal(calls[0].args.key, 'original-run-key')
+    assert.equal(savedFlowNotes(storage).length, 0)
+  })
+}
+
+test('final-boundary: a late successful flow reply cannot clear the original connection note', async t => {
+  const { createController } = await helpers()
+  const receipt = deferred(), entered = deferred(), storage = memoryStorage(), calls = []
+  const controller = createController(context(async (_id, line) => {
+    const input = JSON.parse(line.slice('/legion-panel '.length))
+    calls.push(input)
+    entered.resolve()
+    return receipt.promise
+  }), { storage })
+  t.after(() => controller.dispose())
+  controller.selectSession('a')
+  const config = finalFlowConfiguration(controller)
+  await controller.loadConfig()
+  const pending = controller.runFlow('reply-owner-key')
+  await entered.promise
+  const originalNotes = savedFlowNotes(storage)
+  config.change('https://replacement.invalid')
+  receipt.resolve(reply('flow_run', settledFlow))
+  assert.equal(await pending, false)
+  assert.deepEqual(savedFlowNotes(storage), originalNotes, 'A stale success must remain recoverable under its original owner')
+  assert.equal(controller.getSnapshot().flow, null)
+  assert.equal(controller.getSnapshot().flowRunKey, null)
+  config.change('https://original.invalid')
+  assert.equal(await controller.runFlow(), true)
+  assert.deepEqual(calls.map(call => call.args.key), ['reply-owner-key', 'reply-owner-key'])
+  assert.equal(savedFlowNotes(storage).length, 0)
+})
+
+test('final-boundary: note settlement rechecks ownership inside a delayed browser storage lock', async t => {
+  const clearing = deferred(), release = deferred(), storage = memoryStorage()
+  let locks = 0
+  const { createController } = await helpers({ navigator: { locks: { request(_name, work) {
+    if (++locks === 2) {
+      clearing.resolve()
+      return release.promise.then(work)
+    }
+    return Promise.resolve().then(work)
+  } } } })
+  const controller = createController(context(async (_id, line) => {
+    const input = JSON.parse(line.slice('/legion-panel '.length))
+    return reply(input.action, settledFlow)
+  }), { storage })
+  t.after(() => controller.dispose())
+  controller.selectSession('a')
+  const config = finalFlowConfiguration(controller)
+  await controller.loadConfig()
+  const pending = controller.runFlow('storage-lock-key')
+  await clearing.promise
+  const originalNotes = savedFlowNotes(storage)
+  config.change('https://replacement.invalid')
+  release.resolve()
+  assert.equal(await pending, false)
+  assert.deepEqual(savedFlowNotes(storage), originalNotes)
+})
+
+test('final-boundary: a late flow error stays with its original connection and keeps the recovery note', async t => {
+  const { createController } = await helpers()
+  const receipt = deferred(), entered = deferred(), storage = memoryStorage()
+  const controller = createController(context(async () => { entered.resolve(); return receipt.promise }), { storage })
+  t.after(() => controller.dispose())
+  controller.selectSession('a')
+  const config = finalFlowConfiguration(controller)
+  await controller.loadConfig()
+  const pending = controller.runFlow('late-error-key')
+  await entered.promise
+  const originalNotes = savedFlowNotes(storage)
+  config.change('https://replacement.invalid')
+  receipt.reject(new Error('old connection failed'))
+  assert.equal(await pending, false)
+  assert.equal(controller.getSnapshot().errors.flowRun, null)
+  assert.deepEqual(savedFlowNotes(storage), originalNotes)
+})
+
+test('final-boundary: an initial old preflight cannot replace a newer first identity read', async t => {
+  const { createController } = await helpers()
+  const old = deferred(), entered = deferred(), submits = []
+  let reads = 0
+  const controller = createController(context(async (_id, line) => {
+    const { action, args } = JSON.parse(line.slice('/legion-panel '.length))
+    if (action === 'tasks') {
+      if (++reads === 1) { entered.resolve(); return old.promise }
+      return reply(action, { tasks: [], connection_id: 'b'.repeat(64) })
+    }
+    submits.push(args)
+    return reply(action, { task_ref: 'b'.repeat(32), submission: 'accepted' })
+  }))
+  t.after(() => controller.dispose())
+  controller.selectSession('a')
+  const pending = controller.submit('old preflight', '')
+  await entered.promise
+  await controller.loadTasks()
+  assert.equal(controller.getSnapshot().tasks.connection_id, 'b'.repeat(64))
+  old.resolve(reply('tasks', { tasks: [], connection_id: 'a'.repeat(64) }))
+  await pending
+  assert.equal(controller.getSnapshot().tasks?.connection_id, 'b'.repeat(64), 'The newer list must not be erased by an older first response')
+  assert.equal(submits.length, 0)
+  await controller.submit('new explicit task', '')
+  assert.equal(submits.length, 1)
+  assert.equal(submits[0].connection_id, 'b'.repeat(64))
+})
+
+test('final-boundary: an older task list cannot undo an identity accepted by a newer submit preflight', async t => {
+  const { createController } = await helpers()
+  const old = deferred(), entered = deferred(), submits = []
+  let reads = 0
+  const controller = createController(context(async (_id, line) => {
+    const { action, args } = JSON.parse(line.slice('/legion-panel '.length))
+    if (action === 'tasks') {
+      if (++reads === 1) { entered.resolve(); return old.promise }
+      return reply(action, { tasks: [], connection_id: 'b'.repeat(64) })
+    }
+    submits.push(args)
+    return reply(action, { task_ref: 'b'.repeat(32), submission: 'accepted' })
+  }))
+  t.after(() => controller.dispose())
+  controller.selectSession('a')
+  const pending = controller.loadTasks()
+  await entered.promise
+  await controller.submit('newer explicit task', '')
+  const acceptedKey = controller.getSnapshot().operation.key
+  old.resolve(reply('tasks', { tasks: [], connection_id: 'a'.repeat(64) }))
+  assert.equal(await pending, false)
+  assert.equal(controller.getSnapshot().tasks, null)
+  assert.equal(controller.getSnapshot().operation.key, acceptedKey)
+  assert.equal(controller.getSnapshot().submission.task_ref, 'b'.repeat(32))
+  assert.equal(submits.length, 1)
+})
+
+test('final-boundary: an older preflight error cannot decorate a newer first connection', async t => {
+  const { createController } = await helpers()
+  const old = deferred(), entered = deferred()
+  let reads = 0
+  const controller = createController(context(async (_id, line) => {
+    const { action } = JSON.parse(line.slice('/legion-panel '.length))
+    assert.equal(action, 'tasks')
+    if (++reads === 1) { entered.resolve(); return old.promise }
+    return reply(action, { tasks: [], connection_id: 'b'.repeat(64) })
+  }))
+  t.after(() => controller.dispose())
+  controller.selectSession('a')
+  const pending = controller.submit('old preflight', '')
+  await entered.promise
+  await controller.loadTasks()
+  old.reject(new Error('old connection error'))
+  await pending
+  assert.equal(controller.getSnapshot().tasks.connection_id, 'b'.repeat(64))
+  assert.equal(controller.getSnapshot().errors.submit, null)
+})
+
+test('final-boundary: a failed newer identity read does not supersede an older valid preflight', async t => {
+  const { createController } = await helpers()
+  const old = deferred(), entered = deferred(), submits = []
+  let reads = 0
+  const controller = createController(context(async (_id, line) => {
+    const { action, args } = JSON.parse(line.slice('/legion-panel '.length))
+    if (action === 'tasks') {
+      if (++reads === 1) { entered.resolve(); return old.promise }
+      return reply(action, { tasks: [] })
+    }
+    submits.push(args)
+    return reply(action, { task_ref: 'a'.repeat(32), submission: 'accepted' })
+  }))
+  t.after(() => controller.dispose())
+  controller.selectSession('a')
+  const pending = controller.submit('valid original request', '')
+  await entered.promise
+  assert.equal(await controller.loadTasks(), false)
+  old.resolve(reply('tasks', { tasks: [], connection_id: 'a'.repeat(64) }))
+  await pending
+  assert.equal(submits.length, 1)
+  assert.equal(submits[0].connection_id, 'a'.repeat(64))
+  assert.equal(controller.getSnapshot().submission.task_ref, 'a'.repeat(32))
+})
+
+test('final-boundary: the approved headline describes the team goal without claiming universal readiness', async t => {
+  const panel = await statusPanel(t, {}, { readTask: false })
+  const text = panel.text(panel.render())
+  assert.match(text, /顶尖战队，共同进化/)
+  assert.ok(text.includes('集结各路优秀 Harness，协作完成同一个目标。以顶级成果为参照，反复对比、验证和改进；工具与有效经验为下一次工作所用。'))
+  assert.doesNotMatch(text, /全部已就绪|已经世界第一/)
+})
+
+test('repair: a newer authenticated identity read fences an older preflight even with unchanged settings', async t => {
+  const { createController } = await helpers()
+  const old = deferred(), submits = []
+  let reads = 0
+  const controller = createController(context(async (_id, line) => {
+    const { action, args } = JSON.parse(line.slice('/legion-panel '.length))
+    if (action === 'tasks') {
+      if (++reads === 2) return old.promise
+      return reply(action, { tasks: [], connection_id: (reads === 1 ? 'a' : 'b').repeat(64) })
+    }
+    submits.push(args)
+    return reply('submit', { task_ref: 'b'.repeat(32), submission: 'accepted' })
+  }))
+  t.after(() => controller.dispose())
+  controller.selectSession('a')
+  await controller.loadTasks()
+  const pending = controller.submit('old preflight', '')
+  await turn()
+  await controller.loadTasks()
+  old.resolve(reply('tasks', { tasks: [], connection_id: 'a'.repeat(64) }))
+  await pending
+  assert.equal(submits.length, 0)
+  await controller.submit('new explicit task', '')
+  assert.equal(submits.length, 1)
+  assert.equal(submits[0].connection_id, 'b'.repeat(64))
+})
+
+test('repair: unknown native identity cannot erase an uncertain operation or dispatch a replacement', async t => {
+  const { createController } = await helpers()
+  let identityAvailable = true
+  const calls = []
+  const controller = createController(context(async (_id, line) => {
+    const { action, args } = JSON.parse(line.slice('/legion-panel '.length))
+    if (action === 'tasks') return reply(action, { tasks: [], ...(identityAvailable ? { connection_id: 'a'.repeat(64) } : {}) })
+    calls.push(args)
+    throw new Error('unknown submit outcome')
+  }))
+  t.after(() => controller.dispose())
+  controller.selectSession('a')
+  await controller.submit('original task', '')
+  const key = controller.getSnapshot().operation.key
+  identityAvailable = false
+  await controller.submit('original task', '')
+  controller.newTask()
+  assert.equal(calls.length, 1)
+  assert.equal(controller.getSnapshot().operation.key, key)
+  assert.match(controller.getSnapshot().errors.submit, /identity is unknown/)
+  identityAvailable = true
+  await controller.submit('original task', '')
+  assert.equal(calls[1].key, key)
+})
+
+test('repair: task pagination forwards snapshot and drops late replies after connection invalidation', async t => {
+  const { createController } = await helpers()
+  const pending = deferred(), calls = []
+  const controller = createController(context(async (_id, line) => {
+    const { action, args } = JSON.parse(line.slice('/legion-panel '.length))
+    calls.push(args)
+    if (calls.length > 1) return pending.promise
+    return reply(action, { tasks: [{ task_ref: STATUS_REF }], connection_id: 'a'.repeat(64),
+      task_page: { snapshot: 'c'.repeat(64), next_offset: 1, offset: 0, total: 2 } })
+  }))
+  t.after(() => controller.dispose())
+  const detach = controller.attach('configuration', {})
+  controller.selectSession('a')
+  await controller.loadTasks()
+  const page = controller.loadTasks(1, 'c'.repeat(64))
+  await turn()
+  assert.deepEqual(calls[1], { offset: 1, snapshot: 'c'.repeat(64) })
+  detach()
+  pending.resolve(reply('tasks', { tasks: [{ task_ref: 'd'.repeat(32) }] }))
+  assert.equal(await page, false)
+  assert.equal(controller.getSnapshot().tasks, null)
+})
+
+for (const locale of ['zh', 'en']) {
+  test(`repair: Team tasks shows unknown, incomplete and confirmed empty as different facts (${locale})`, async t => {
+    let mode = 'unknown'
+    const panel = await statusPanel(t, {}, { locale, readTask: false, taskReply: async () => ({
+      connection_id: 'a'.repeat(64), tasks: [], task_page: {
+        available: mode !== 'unknown', total: mode === 'unknown' ? null : 0,
+        shown_count: mode === 'unknown' ? null : 0, offset: 0, next_offset: null,
+        source_complete: mode === 'empty', complete: mode === 'empty',
+      },
+    }) })
+    const label = (zh, en) => locale === 'zh' ? zh : en
+    panel.find('button', label('战队任务', 'Team tasks')).props.onClick()
+    await turn()
+    assert.match(panel.text(panel.render()), /无法确认任务列表|Task list unavailable/)
+    assert.doesNotMatch(panel.text(panel.render()), /本会话尚无军团任务|No Legion tasks in this session/)
+    mode = 'incomplete'
+    panel.find('button', label('刷新任务列表', 'Refresh tasks')).props.onClick()
+    await turn()
+    assert.match(panel.text(panel.render()), /任务索引不完整|Task index is incomplete/)
+    assert.doesNotMatch(panel.text(panel.render()), /本会话尚无军团任务|No Legion tasks in this session/)
+    mode = 'empty'
+    panel.find('button', label('刷新任务列表', 'Refresh tasks')).props.onClick()
+    await turn()
+    assert.match(panel.text(panel.render()), /本会话尚无军团任务|No Legion tasks in this session/)
+    assert.doesNotMatch(panel.text(panel.render()), /接入任务|Integration tasks/)
+  })
+
+  test(`repair: Team tasks traverses all 101 actual adapter rows and rejects drift (${locale})`, async t => {
+    let tasks = Array.from({ length: 101 }, (_, index) => ({
+      task_ref: (index + 1).toString(16).padStart(32, '0'), key: `task-${index}`,
+    }))
+    const client = { clean: value => value, redactText: value => value,
+      scope(execution) { assert.equal(execution.sessionId, 'a') },
+      store: { service: 'a'.repeat(64), root: '/synthetic' },
+      list: async () => ({ tasks, source: 'local_recovery_index_not_live_status' }) }
+    const panel = await statusPanel(t, {}, { locale, readTask: false, taskReply: async (id, args) => {
+      const result = await executeWorkbenchCommand({}, client, {}, {
+        agent: { id }, signal: new AbortController().signal, attachments: [],
+        rawInput: JSON.stringify({ action: 'tasks', args }),
+      })
+      const body = JSON.parse(result.text)
+      if (!body.ok) throw new Error(body.error)
+      return body.value
+    } })
+    const label = (zh, en) => locale === 'zh' ? zh : en
+    panel.find('button', label('战队任务', 'Team tasks')).props.onClick()
+    await turn()
+    const seen = []
+    for (;;) {
+      const tree = panel.render()
+      seen.push(...panel.nodes(tree).filter(node => node.type === 'article')
+        .map(node => panel.nodes(node).find(child => child.type === 'code')).map(node => panel.text(node)))
+      const next = panel.find('button', label('下一页任务', 'Next task page'))
+      if (!next) break
+      next.props.onClick()
+      await turn()
+    }
+    assert.deepEqual(seen, tasks.map(row => row.task_ref))
+    panel.find('button', label('返回任务首页', 'Back to first task page')).props.onClick()
+    await turn()
+    tasks = [{ task_ref: 'f'.repeat(32), key: 'new row' }, ...tasks]
+    panel.find('button', label('下一页任务', 'Next task page')).props.onClick()
+    await turn()
+    assert.match(panel.text(panel.render()), /索引已变化|index changed/)
+    assert.match(panel.text(panel.render()), /旧任务列表|not current/)
+    assert.equal(panel.find('button', label('下一页任务', 'Next task page')).props['aria-disabled'], true)
+    panel.find('button', label('刷新任务列表', 'Refresh tasks')).props.onClick()
+    await turn()
+    assert.match(panel.text(panel.render()), /new row/)
+    assert.doesNotMatch(panel.text(panel.render()), /旧任务列表|not current/)
   })
 }

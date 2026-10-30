@@ -1,35 +1,77 @@
-# Legion · Leading harnesses, one co-evolving team
+# Legion · Leading harnesses. Shared evolution. World-class ambition.
 
 English | [简体中文](README.zh-CN.md)
 
-**Legion's goal is to bring any leading harness into a team that works for the user, shares tools and capabilities, and improves together through real work.**
+**Give one goal to a team of leading harnesses.** Research, collaborate, share tools,
+and keep improving the same deliverable against strong real-world references.
+Make useful improvements available to later work, not just one conversation.
 
-The user provides a goal. The team researches, organizes itself, uses each other's tools, reviews contributions and continues the same deliverable. A verified improvement made by one member can become usable by others and be improved again in later work. This is not a menu for choosing one assistant or a collection of independent answers.
+Open to different harnesses rather than tied to one. Shared evolution and world-class
+outcomes are the ambition; actual members and results remain evidence-backed,
+not a claim that every harness is ready or every result leads the industry.
 
-**DSH is an entry point; the co-evolving team is the product.** Plugin discovery, GitHub integration and core configuration support that team rather than define the whole vision. The [product definition and verified scope](docs/ECOSYSTEM.md#co-evolving-team) remain separate: installation and connection checks do not establish full collective autonomy or co-evolution.
+Start in DSH: choose companions, describe what you want, and follow the task and its results in the original conversation. Connect your independent Legion core when you want to delegate work to its members.
 
-**[Connector 0.5.0 is public](https://github.com/seanliii/dsh-plugin-legion/releases/tag/v0.5.0): set up the team once, then start automatically.** The [public Legion core v0.1.0](https://github.com/seanliii/meyo-legion-core/releases/tag/v0.1.0) is installed separately. Its first-party source is MIT, it remains a **technical preview**, and third-party licenses are retained.
+**[0.5.1 installation](docs/MARKET.md#v051) · [Open the DSH workbench](#open-the-native-workbench) · [Product and verified scope](docs/PRODUCT.md)**
 
-Choose companions and a collaboration style; improvement defaults to on. Submitting schedules
-the first round and weekly follow-ups through native DSH, with pause and original-conversation
-entry points. See the [workflow and boundaries](docs/TEAM.md). Scheduling, model execution and
-verified improvement remain separate. Users configure their own models and accounts; no shared credentials are included.
+![DSH native author, selected members and separate configuration facts](docs/media/team-overview.png)
+
+[Watch the real before/after walkthrough](https://github.com/seanliii/dsh-plugin-legion/releases/download/v0.5.1/dsh-v051-comparison.mp4) · Original-speed interaction replay, edited between chapters, no live speech. Video duration is not model runtime.
+
+**Technical preview.** 0.5.0 demonstrated single-DSH-author delivery. The 0.5.1 review run demonstrated a bounded two-harness exchange: DSH delegated an independent review to core Codex, then independently reproduced and adopted its findings. This was supervised, not unattended team evolution.
+
+**0.5.1: see your team clearly.** Selected-member overviews, factual status projection and member pagination distinguish the DSH author model from core members. [Evidence and release status](docs/PLAN.md#v051)
+
+<a id="what-you-can-do"></a>
+
+## One goal. Shared tools. Improvements that reach the team.
+
+| What matters | What the entry provides |
+|---|---|
+| **Continue one piece of work together** | Choose candidates and collaboration preferences, then use the original task and conversation to continue revisions instead of starting over. |
+| **Put useful tools to work** | Discover visible capabilities, inspect real interfaces, and use authorized tool and message paths to contribute to the original task. |
+| **Make improvements reusable** | DSH independently reproduced and fixed Codex review findings; the maintainer imported the changes and reran the regression tests. Automatic propagation to later tasks remains unproven. |
+| **Compare with strong real-world work** | Research relevant high-quality references, compare actual outcomes and revise the same deliverable. Benchmarking is a process, not an unsupported victory claim. |
+
+**DSH is an entry point; the co-evolving team is the product.** It is not a menu for choosing one assistant or a pile of independent answers. [The product idea](docs/PRODUCT.md#one-team) · [Mechanisms and boundaries](docs/ECOSYSTEM.md#co-evolving-team)
 
 ## Get started
 
-1. Install through [**DSH Discover**](docs/MARKET.md#官方-discover-索引) or the [fixed Git command](docs/MARKET.md#v050), then explicitly enable Legion. Neither route requires publishing this connector to npm.
-2. Open **Legion**, choose a **Working session**, then follow **Companions → Collaboration → Grow together**. You may also use **Discover** directly; tools, Skills and public GitHub search need no Legion core.
+1. Install through [**DSH Discover**](docs/MARKET.md#官方-discover-索引) or the [fixed Git command](docs/MARKET.md#v051), then explicitly enable Legion. Neither route requires publishing this connector to npm.
+2. Open **Legion**, choose a **Working session**, then follow **Companions → Collaboration → Grow together**. Improvement is enabled by default; submitting saves the preferences and schedules the first round and weekly follow-ups through native DSH, with pause and original-conversation entry points. [Workflow and boundaries](docs/TEAM.md)
 3. For delegated work, [download and verify core v0.1.0](docs/CORE.md#public-core-install), create a fresh Python 3.12 environment, then follow **`init` → `serve` → `dsh-config` → Save connection**. Configure your own model before submitting work; the connector does not bundle or start the core.
 
-Try an ordinary DSH request:
+Before using the 0.5.1 Git target below, check release availability and package verification in the [version record](docs/PLAN.md#v051). Replace the example `web` profile as needed and retain `-w`:
+
+```sh
+dsh plugin --profile web -w add 'github:seanliii/dsh-plugin-legion#v0.5.1'
+```
+
+Users supply their own models and accounts; no shared credentials are included. The separately installed [public core v0.1.0](https://github.com/seanliii/meyo-legion-core/releases/tag/v0.1.0) is also a technical preview: first-party source is MIT and third-party licenses are retained. Scheduling, model execution and verified improvement remain separate.
+
+Give DSH a real goal, for example:
+
+```text
+For this goal, give me a working result I can keep using and modifying.
+Collaborate with configured members when useful, and fix the same deliverable
+when you find a problem—not several unrelated answers.
+```
+
+<details>
+<summary>No core yet? Start with discovery, source reading and native capabilities.</summary>
+
+Use **Discover** directly: current DSH tools, Skills and public GitHub search need no Legion core. Try this in an ordinary DSH conversation:
 
 ```text
 Find an existing plugin for the capability I need. Show its sources and limitations before installing anything.
 ```
 
-[Post-release receipts on GitHub main](https://github.com/seanliii/dsh-plugin-legion/blob/main/docs/PLAN.md#v050) · [Limits, data and license](#limits-data-and-license)
+</details>
 
-## What you can do
+[0.5.0 post-release receipts on GitHub main](https://github.com/seanliii/dsh-plugin-legion/blob/main/docs/PLAN.md#v050) · [Limits, data and license](#limits-data-and-license)
+
+<details>
+<summary>Tool interfaces and their exact boundaries</summary>
 
 | Need | Entry point | Boundary |
 |---|---|---|
@@ -46,6 +88,8 @@ Find an existing plugin for the capability I need. Show its sources and limitati
 You can also ask DSH to inspect a public repository, adapt its real interfaces, and package independently useful capabilities. **This is not an automatic converter for arbitrary applications.** The on-demand `legion-ecosystem` skill supplies the available tools and development references.
 
 The core retains world-reference research, intent context, native collaboration, knowledge reuse, failure feedback, continued revision and formal delivery through existing modules. See the [capability map](docs/CORE.md). Retaining a mechanism does not prove every member is installed or that a team generally outperforms the strongest individual harness.
+
+</details>
 
 ## Install a reviewed local copy
 
@@ -120,7 +164,7 @@ After installing and enabling the connector in **DSH Plugins**, open **Legion** 
 | **My Legion (0.5.0)** | **Companions → Collaboration → Grow together → Form team and start automatically**. Inspect schedules, open results, run again or pause. | Saves native `candidateHarnesses` and `teamProfile`, schedules the first round and defaults to weekly follow-ups. Selection is not installation; scheduling and delivery do not prove completed improvement. |
 | **Discover** | Search **Session tools / Skills**, **GitHub**, or **DSH plugin market**. | Tools are those visible to the selected session's Agent; Skills are guidance. Only configured market indexes are searched. No core is required, and discovery executes no tools. |
 | **Add capabilities** | Inspect and explicitly install an existing DSH bundle, or edit a goal and **Delegate integration**. | Native package management and model-led adaptation are different operations; reading a repository does neither automatically. |
-| **Integration tasks** | **Refresh tasks**, then **Read live progress**; inspect export records and use **Download file** where available. | The list is this session and identity's local recovery index, not a live feed. Runtime, artifacts, refusal reasons and pagination are shown separately; incomplete data is not zero artifacts. `done` is not a usable-result guarantee. |
+| **Team tasks** | **Refresh tasks**, then **Read live progress**; inspect export records and use **Download file** where available. | The list is this session and identity's local recovery index, not a live feed. Runtime, artifacts, refusal reasons and pagination are shown separately; incomplete data is not zero artifacts. `done` is not a usable-result guarantee. |
 | **Connection** | Enter **Core URL**, **Token environment variable name**, or **private token file path**, then **Save connection**. | Never enter the token value. Saving native configuration reloads the connector; it does not install a core or configure models. |
 
 Switching the working session changes tool visibility and task context, **not** the scope of settings: bundle switches and connector configuration affect the same DSH profile. Only members the service marks as selectable can be checked. Saving needs writable native configuration; on a revision conflict, reload it before editing again.

@@ -1,23 +1,43 @@
 # Installation and publication / 安装与发布路线
 
-**0.5.0 已公开：原生组队、自动协作／发现／改进与持久恢复。** 先按下方[Discover 步骤](#官方-discover-索引)或[Git 安装](#v050)启用连接器；需要委托工作，再[下载公开核心 v0.1.0](CORE.md#public-core-install)建立实例。核心是另包安装的技术预览，不随连接器打包。
+**0.5.1：同一个目标，先看清你的战队，再继续真实工作。** 首屏区分 DSH 作者模型、所选核心成员和任务安排；成员目录可分页，未取得的状态不再被藏掉。先按下方[Discover 步骤](#官方-discover-索引)或[Git 安装](#v051)启用连接器；需要委托工作，再[下载公开核心 v0.1.0](CORE.md#public-core-install)建立实例。核心是另包安装的技术预览，不随连接器打包。
 
-本版源码、包与验收边界见 [0.5.0 记录](PLAN.md#v050)。[0.4.2 验收](PLAN.md#v042)仅证明旧版。
+本版源码、包与验收边界见 [0.5.1 记录](PLAN.md#v051)。[0.5.0](PLAN.md#v050) 和 [0.4.2](PLAN.md#v042) 的记录保留原版本归属。
 本页为 `main` 上的后验说明，不移动已发布标签，不替换原 TGZ。
 
-**0.5.0 uses Git distribution, not npm.** Install and enable the connector, then create your own instance from the public core v0.1.0 source archive. Configure your own models before execution. The core's first-party code is MIT and third-party licenses are retained.
+**0.5.1 uses Git distribution, not npm.** Install and enable the connector, then create your own instance from the public core v0.1.0 source archive. Configure your own models before execution. The core's first-party code is MIT and third-party licenses are retained.
 
 ## 分清三种分发方式
 
 | 路线 | 提供什么 | npm 是否必需 |
 |---|---|---|
-| 官方 CLI 固定 Git 提交／标签 | 本版为 `v0.5.0`；旧版标签仍保留自己的历史回执。 | 不要求将此包发布到 npm；依赖获取仍可能联网。 |
+| 官方 CLI 固定 Git 提交／标签 | 本版为 `v0.5.1`；旧版标签仍保留自己的历史回执。 | 不要求将此包发布到 npm；依赖获取仍可能联网。 |
 | 官方 Discover 自托管索引 | 用户添加可信索引，安装其中声明的 Git 来源；下方提供本版的发布后索引入口。 | Git 来源不要求此包先发 npm。 |
 | 社区目录／1024Store | 提交一份目录 JSON；无 npm 可 **browse-only（仅浏览仓库）** 收录。 | 不是投稿前提；一键安装以商店实际提供的方式为准。 |
 
 社区目录、姐妹站安装界面与官方管理器是不同系统。已保存的姐妹站源码中，常规安装按钮主要提供 npm 路线；底层官方 CLI／命令转发不能概括成“npm-only”。GitHub 元数据也不证明有 Git 一键按钮。不要把来源说明、按钮存在、实际安装或官方背书混为一谈。
 
 ## 固定 Git 安装
+
+<a id="v051"></a>
+
+### v0.5.1：已公开的固定版本
+
+需要 Node.js >=24.9.0 与 DSH `0.2.1-rc.2`。`web` 是示例 profile，保留 `-w`：
+
+```sh
+dsh plugin --profile web -w add 'github:seanliii/dsh-plugin-legion#v0.5.1'
+```
+
+安装后在 **DSH 插件页明确启用**，再打开侧栏 **军团**。已有战队配置、原会话和安排不需要重建。
+升级前结束正在运行的模型任务；需要防止旧代码在更新中运行时，先在原生插件页停用该包，再更新并启用。
+
+本版新增所选成员独立摘要、成员分页、配置切换时的旧回执隔离，以及 DSH 作者与核心模型的分别展示。
+“历史验证”“当前配置”“本次任务执行”仍是不同事实。完整来源提交、原始 TGZ 与 `SHA256SUMS`
+在 [v0.5.1 Release](https://github.com/seanliii/dsh-plugin-legion/releases/tag/v0.5.1)，Discover 的来源钉完整提交；
+不把可变的 `main` 当成安装版本，也不替换 `v0.5.0` 的标签和附件。
+
+[真实验收与录屏说明](PLAN.md#v051) · [产品理念与当前能力](PRODUCT.md) · [原生流程](TEAM.md)
 
 <a id="v050"></a>
 

@@ -128,6 +128,296 @@ function pinnedSources({ readmeMissing = false } = {}) {
   return { sources, calls, files }
 }
 
+function memberRow(key, overrides = {}) {
+  return {
+    key, display_name: key, installed: true, available: true,
+    model: { model: 'fixture-model', display_name: 'Fixture model', source: 'operator_binding',
+      configured: true, provider_verified: false },
+    readiness: { connected: true, verified: false, historical_verified: true, configured: true, samples: 2 },
+    entry_points: { execution: { harness: key, selectable: true, integration: 'native', resume: 'session' } },
+    profile: { intro: 'Service-provided introduction', source: 'service self-report' },
+    ...overrides,
+  }
+}
+
+test('members projection finds selected Codex beyond item 100 before clipping and keeps cache facts first', async t => {
+  const f = await fixture(t)
+  f.client.candidateHarnesses = ['codex', 'not-observed']
+  const harnesses = Array.from({ length: 110 }, (_, index) => memberRow(index === 109 ? 'codex' : `member-${index}`, {
+    profile: { intro: '大段来源介绍'.repeat(3000), source: 'service self-report' },
+  }))
+  harnesses[109].model.configured = false
+  harnesses[109].model.configuration_error = 'explicit_responses_not_configured'
+  harnesses[109].readiness.configured = false
+  const received = []
+  t.mock.method(f.client, 'runtime', async (args, execution) => {
+    received.push({ args, execution })
+    return { view: 'members', source: 'fixture-public-catalog', observed_at: '2026-10-30T00:00:00.000Z',
+      runtime: { harnesses, answer_pool: harnesses.map(row => row.key), updated_at: 123,
+        warming: true, stale: true, public_catalog_only: false, from_cache: true },
+      verification: 'service_observation_only_no_execution' }
+  })
+  const current = invocation({ action: 'runtime', args: { view: 'members', offset: 100, limit: 10 } })
+  const body = unpack(await f.run(null, current))
+  assert.equal(body.ok, true, JSON.stringify(body))
+  const value = body.value
+  assert.deepEqual(received[0].args, { view: 'members' }, 'UI paging must not invent a core HTTP API')
+  assert.equal(received[0].execution.sessionId, current.agent.id)
+  assert.equal(received[0].execution.signal, current.signal)
+  assert.equal(value.runtime.warming, true)
+  assert.equal(value.runtime.stale, true)
+  assert.equal(value.runtime.public_catalog_only, false)
+  assert.equal(value.runtime.from_cache, true)
+  assert.equal(value.runtime.updated_at, 123)
+  assert.equal(value.member_page.offset, 100)
+  assert.equal(value.member_page.limit, 10)
+  assert.equal(value.member_page.total, 110)
+  assert.equal(value.member_page.shown_count, 10)
+  assert.equal(value.member_page.next_offset, null)
+  assert.equal(value.runtime.harnesses[0].key, 'member-100')
+  assert.equal(value.runtime.harnesses[9].key, 'codex')
+  assert.equal(value.selected.mode, 'configured')
+  assert.equal(value.selected.total, 2)
+  assert.equal(value.selected.shown_count, 2)
+  const [codex, missing] = value.selected.items
+  assert.equal(codex.key, 'codex')
+  assert.equal(codex.observed, true)
+  assert.equal(codex.model.configured, false)
+  assert.equal(codex.model.configuration_error, 'explicit_responses_not_configured')
+  assert.equal(codex.model.provider_verified, false)
+  assert.equal(codex.readiness.historical_verified, true)
+  assert.equal(codex.entry_points.execution.selectable, true)
+  assert.equal(codex.profile.source, 'service self-report')
+  assert.ok(Buffer.byteLength(codex.profile.intro) <= 600)
+  assert.deepEqual(missing, { key: 'not-observed', observed: false })
+  assert.equal(value.verification, 'service_observation_only_no_execution')
+  assert.equal(f.calls.length, 0)
+})
+
+test('members projection paginates with default 0/12 and reports real totals without overlapping pages', async t => {
+  const f = await fixture(t)
+  t.mock.method(f.client, 'runtime', async () => ({
+    view: 'members', runtime: { harnesses: Array.from({ length: 17 }, (_, index) => memberRow(`member-${index}`)) },
+  }))
+  const first = unpack(await f.run({ action: 'runtime', args: { view: 'members' } })).value
+  assert.deepEqual(first.member_page, { offset: 0, limit: 12, total: 17, shown_count: 12, next_offset: 12, complete: false })
+  assert.deepEqual(first.selected, { mode: 'automatic', items: [], total: 0, shown_count: 0, complete: true })
+  const second = unpack(await f.run({ action: 'runtime', args: { view: 'members', offset: first.member_page.next_offset } })).value
+  assert.deepEqual(second.member_page, { offset: 12, limit: 12, total: 17, shown_count: 5, next_offset: null, complete: false })
+  assert.deepEqual([...first.runtime.harnesses, ...second.runtime.harnesses].map(row => row.key),
+    Array.from({ length: 17 }, (_, index) => `member-${index}`))
+  const outside = unpack(await f.run({ action: 'runtime', args: { view: 'members', offset: 999, limit: 1 } })).value
+  assert.deepEqual(outside.member_page, { offset: 999, limit: 1, total: 17, shown_count: 0, next_offset: null, complete: false })
+})
+
+test('members projection accepts paging only for members and refuses invalid paging before any service call', async t => {
+  const f = await fixture(t)
+  t.mock.method(f.client, 'runtime', async () => assert.fail('Invalid paging must not call the core'))
+  const invalid = [
+    { view: 'members', offset: -1 }, { view: 'members', offset: 0.5 }, { view: 'members', offset: '0' },
+    { view: 'members', offset: Number.MAX_SAFE_INTEGER + 1 },
+    { view: 'members', limit: 0 }, { view: 'members', limit: 31 }, { view: 'members', limit: 1.5 },
+    { view: 'members', limit: '12' }, { view: 'members', limit: null },
+    { view: 'capabilities', offset: 0 }, { view: 'catalog', limit: 12 },
+    { view: 'members', keys: ['codex'] }, { view: 'members', sessionId: 'forged' },
+  ]
+  for (const args of invalid) {
+    assert.equal(unpack(await f.run({ action: 'runtime', args })).ok, false, JSON.stringify(args))
+  }
+})
+
+test('members projection snapshots configured candidates before the pending runtime read', async t => {
+  const f = await fixture(t)
+  const candidates = ['codex', 'not-observed']
+  f.client.candidateHarnesses = candidates
+  let enter, release
+  const entered = new Promise(resolve => { enter = resolve })
+  t.mock.method(f.client, 'runtime', () => {
+    enter()
+    return new Promise(resolve => { release = resolve })
+  })
+  const pending = f.run({ action: 'runtime', args: { view: 'members' } })
+  await entered
+  candidates.splice(0, candidates.length, 'new-member')
+  f.client.candidateHarnesses = ['another-member']
+  release({ view: 'members', runtime: { harnesses: [memberRow('new-member'), memberRow('codex')] } })
+  const body = unpack(await pending)
+  assert.equal(body.ok, true)
+  assert.deepEqual(body.value.selected.items.map(row => [row.key, row.observed]), [['codex', true], ['not-observed', false]])
+})
+
+test('members projection preserves public and warming unknowns without manufacturing missing-member false states', async t => {
+  const f = await fixture(t)
+  f.client.candidateHarnesses = ['codex', 'absent']
+  t.mock.method(f.client, 'runtime', async () => ({
+    view: 'members', runtime: { public_catalog_only: true, warming: true, stale: true, updated_at: 0,
+      harnesses: [{ key: 'codex', display_name: 'Codex', available: null, model: null,
+        readiness: { declared: true, connected: false, verified: false }, entry_points: [],
+        profile: { intro: 'Catalog declaration only' } }] },
+  }))
+  const body = unpack(await f.run({ action: 'runtime', args: { view: 'members' } }))
+  assert.equal(body.ok, true)
+  const { runtime, selected } = body.value
+  assert.equal(runtime.public_catalog_only, true)
+  assert.equal(runtime.warming, true)
+  assert.equal(runtime.stale, true)
+  const [codex, absent] = selected.items
+  assert.equal(codex.observed, true)
+  assert.equal(codex.available, null)
+  assert.equal(Object.hasOwn(codex, 'installed'), false)
+  assert.equal(codex.model, null)
+  assert.deepEqual(codex.entry_points, [])
+  assert.equal(codex.readiness.connected, false, 'preserve the reported field, not a fabricated runtime verdict')
+  assert.deepEqual(absent, { key: 'absent', observed: false })
+  assert.equal(Object.hasOwn(absent, 'installed'), false)
+  assert.equal(Object.hasOwn(absent, 'available'), false)
+  assert.equal(Object.hasOwn(absent, 'readiness'), false)
+})
+
+test('members projection redacts complete values before selecting and clipping both normal and selected rows', async t => {
+  const f = await fixture(t)
+  f.client.candidateHarnesses = ['codex']
+  t.mock.method(f.client, 'runtime', async () => ({
+    view: 'members', source: `https://host.invalid/?token=${encodeURIComponent(TOKEN)}`,
+    runtime: { warming: false, harnesses: [memberRow('codex', {
+      profile: { intro: `${'x'.repeat(590)}${TOKEN}${'y'.repeat(1000)}`, source: `Bearer ${TOKEN}` },
+      model: { model: 'test-model', configured: false, provider_verified: false,
+        configuration_error: `Bearer ${TOKEN}`, error: { message: `Bearer ${TOKEN}`, api_key: TOKEN }, api_key: TOKEN },
+      readiness: { configured: false, provider_verified: false, historical_verified: true, secret: TOKEN },
+      entry_points: { execution: { selectable: true, harness: 'codex', integration: 'native' },
+        terminal: [{ authorization: TOKEN }], web: [{ url: `https://host.invalid/?token=${TOKEN}` }] },
+      private_token: TOKEN, unsupported_metadata: 'omitted-not-a-status',
+    })] },
+  }))
+  const result = await f.run({ action: 'runtime', args: { view: 'members' } })
+  const body = unpack(result)
+  assert.equal(body.ok, true)
+  assert.equal(result.text.includes(TOKEN), false)
+  assert.equal(result.text.includes(encodeURIComponent(TOKEN)), false)
+  assert.equal(result.text.includes('omitted-not-a-status'), false)
+  for (const row of [body.value.runtime.harnesses[0], body.value.selected.items[0]]) {
+    assert.equal(row.key, 'codex')
+    assert.equal(row.model.configured, false)
+    assert.equal(row.model.provider_verified, false)
+    assert.match(row.model.configuration_error, /\[redacted\]/)
+    assert.equal(Object.hasOwn(row.model, 'api_key'), false)
+    assert.equal(Object.hasOwn(row.entry_points, 'terminal'), false)
+  }
+  assert.ok(body.value.projection.omitted_fields.length > 0)
+  assert.ok(body.value.projection.truncated_fields.some(path => path.includes('profile.intro')))
+})
+
+test('members projection shrinks a byte-heavy page at whole rows, preserving exact long keys and a progressing cursor', async t => {
+  const f = await fixture(t)
+  const harnesses = Array.from({ length: 8 }, (_, index) => memberRow(`member-${'x'.repeat(6000)}-${index}`, {
+    entry_points: { execution: { selectable: true } },
+  }))
+  f.client.candidateHarnesses = [harnesses[7].key]
+  t.mock.method(f.client, 'runtime', async () => ({ view: 'members', runtime: { harnesses, warming: false } }))
+  const observedKeys = []
+  let offset = 0
+  do {
+    const body = unpack(await f.run({ action: 'runtime', args: { view: 'members', offset, limit: 30 } }))
+    assert.equal(body.ok, true, JSON.stringify(body))
+    const value = body.value
+    assert.equal(value.member_page.total, 8)
+    assert.ok(value.member_page.shown_count > 0 && value.member_page.shown_count < 8)
+    assert.equal(value.member_page.shown_count, value.runtime.harnesses.length)
+    assert.deepEqual(value.selected.items.map(row => row.key), [harnesses[7].key], 'selection has its own budget')
+    for (const row of value.runtime.harnesses) {
+      assert.ok(harnesses.some(source => source.key === row.key), 'a key must never be a clipped identity')
+      observedKeys.push(row.key)
+    }
+    const next = value.member_page.next_offset
+    if (next !== null) assert.equal(next, offset + value.member_page.shown_count, 'never skip undisplayed rows')
+    offset = next
+  } while (offset !== null)
+  assert.deepEqual(observedKeys, harnesses.map(row => row.key))
+})
+
+test('members projection reports the unshown tail of an oversized selection independently of the catalog page', async t => {
+  const f = await fixture(t)
+  f.client.candidateHarnesses = Array.from({ length: 100 }, (_, index) => `selected-${'a'.repeat(600)}-${index}`)
+  t.mock.method(f.client, 'runtime', async () => ({
+    view: 'members', runtime: { harnesses: [memberRow('other')], warming: false },
+  }))
+  const body = unpack(await f.run({ action: 'runtime', args: { view: 'members', limit: 1 } }))
+  assert.equal(body.ok, true)
+  assert.equal(body.value.runtime.harnesses.length, 1)
+  assert.equal(body.value.member_page.total, 1)
+  const selected = body.value.selected
+  assert.equal(selected.total, 100)
+  assert.equal(selected.shown_count, selected.items.length)
+  assert.ok(selected.shown_count > 0 && selected.shown_count < 100)
+  assert.equal(selected.complete, false)
+  assert.deepEqual(selected.items.map(row => row.key), f.client.candidateHarnesses.slice(0, selected.shown_count))
+  assert.ok(selected.items.every(row => row.observed === false))
+  assert.ok(body.value.projection.truncated_fields.includes('$.selected.items'))
+})
+
+test('members projection keeps anomalous row positions and records omitted unknown fields rather than reindexing', async t => {
+  const f = await fixture(t)
+  f.client.candidateHarnesses = ['codex']
+  t.mock.method(f.client, 'runtime', async () => ({
+    view: 'members', unexpected_root: 'not-a-fact',
+    runtime: { harnesses: [null, memberRow('codex', { installed: 'not-a-boolean', extra_status: { guess: true } }),
+      { display_name: 'Missing key' }], warming: false, extra_metadata: { guess: true } },
+  }))
+  const body = unpack(await f.run({ action: 'runtime', args: { view: 'members', limit: 30 } }))
+  assert.equal(body.ok, true)
+  const value = body.value
+  assert.equal(value.member_page.total, 3)
+  assert.equal(value.member_page.shown_count, 3)
+  assert.equal(value.member_page.next_offset, null)
+  assert.equal(value.member_page.complete, false)
+  assert.equal(value.runtime.harnesses[0], null)
+  assert.equal(value.runtime.harnesses[1].key, 'codex')
+  assert.equal(value.runtime.harnesses[1].installed, 'not-a-boolean')
+  assert.equal(Object.hasOwn(value.runtime.harnesses[2], 'key'), false)
+  assert.equal(value.selected.items[0].observed, true)
+  assert.ok(value.projection.omitted_fields.includes('$.unexpected_root'))
+  assert.ok(value.projection.omitted_fields.includes('$.runtime.harnesses[1].extra_status'))
+})
+
+test('members projection keeps the legacy generic path when no runtime harness array was supplied', async t => {
+  const f = await fixture(t)
+  for (const runtime of [{ legacy: { installed: null } }, { harnesses: null, reason: 'unavailable' }]) {
+    t.mock.method(f.client, 'runtime', async () => ({ view: 'members', runtime }))
+    const value = unpack(await f.run({ action: 'runtime', args: { view: 'members' } })).value
+    assert.deepEqual(value.runtime, runtime)
+    assert.equal(Object.hasOwn(value, 'member_page'), false)
+    assert.equal(Object.hasOwn(value, 'selected'), false)
+  }
+})
+
+test('members projection never claims completeness when the upstream array was already truncated', async t => {
+  const f = await fixture(t)
+  f.client.candidateHarnesses = ['absent']
+  t.mock.method(f.client, 'runtime', async () => ({
+    view: 'members', runtime: { harnesses: [memberRow('other')], warming: true },
+    projection: { omitted_fields: [], truncated_fields: ['$.runtime.harnesses'] },
+  }))
+  const value = unpack(await f.run({ action: 'runtime', args: { view: 'members' } })).value
+  assert.equal(value.member_page.complete, false)
+  assert.equal(value.selected.complete, false)
+  assert.deepEqual(value.selected.items, [{ key: 'absent', observed: false }])
+  assert.ok(value.projection.truncated_fields.includes('$.runtime.harnesses'))
+})
+
+test('members projection does not publish a redacted or clipped long key as a real harness identity', async t => {
+  const f = await fixture(t)
+  const key = `member-${'z'.repeat(20000)}`
+  f.client.candidateHarnesses = [key]
+  t.mock.method(f.client, 'runtime', async () => ({ view: 'members', runtime: { harnesses: [memberRow(key)] } }))
+  const body = unpack(await f.run({ action: 'runtime', args: { view: 'members' } }))
+  assert.equal(body.ok, true)
+  assert.equal(body.value.selected.total, 1)
+  assert.equal(body.value.selected.shown_count, 0)
+  assert.equal(body.value.selected.complete, false)
+  assert.equal(Object.hasOwn(body.value.runtime.harnesses[0], 'key'), false)
+  assert.ok(body.value.projection.truncated_fields.length > 0)
+})
+
 test('workbench routes only the requested action with the exact Host session and cancellation signal', async t => {
   const f = await fixture(t)
   const cases = [
@@ -1028,4 +1318,96 @@ test('team wiring: flow observations and failures retain original uncertainty wh
   assert.doesNotMatch(failed.text, /PRIVATE_FLOW_CAUSE/)
   assert.ok(!failed.text.includes(TOKEN))
   assert.match(unpack(failed).error, /原生目录读取失败/)
+})
+
+// Core review P2-3: every observed task must remain reachable, not just the first 100.
+test('repair: task pages cover long indexes using whole rows and snapshot-bound cursors', async t => {
+  const f = await fixture(t)
+  const raw = { source: 'local_recovery_index_not_live_status', tasks: Array.from({ length: 135 }, (_, i) => ({
+    task_ref: (i + 1).toString(16).padStart(32, '0'), key: `task-${i}-${'长'.repeat(150)}`,
+    created_at: '2026-10-30T00:00:00Z', description: `Bearer ${TOKEN} ${'huge'.repeat(5000)}`,
+  })) }
+  const original = JSON.stringify(raw)
+  t.mock.method(f.client, 'list', async execution => {
+    assert.equal(execution.sessionId, 'workbench-agent')
+    return raw
+  })
+  let offset = 0, snapshot
+  const seen = []
+  do {
+    const result = await f.run({ action: 'tasks', args: { offset, limit: 30, ...(snapshot ? { snapshot } : {}) } })
+    assert.ok(!result.text.includes(TOKEN))
+    const { ok, value } = unpack(result)
+    assert.equal(ok, true)
+    const page = value.task_page
+    assert.equal(page.available, true)
+    assert.equal(page.total, 135)
+    assert.equal(page.offset, offset)
+    assert.ok(page.shown_count > 0 && page.shown_count <= 30)
+    assert.equal(page.shown_count, value.tasks.length)
+    assert.match(value.connection_id, /^[a-f0-9]{64}$/)
+    if (snapshot) assert.equal(page.snapshot, snapshot)
+    snapshot = page.snapshot
+    seen.push(...value.tasks.map(row => row.task_ref))
+    if (page.next_offset !== null) assert.equal(page.next_offset, offset + page.shown_count)
+    offset = page.next_offset
+  } while (offset !== null)
+  assert.deepEqual(seen, raw.tasks.map(row => row.task_ref))
+  assert.equal(JSON.stringify(raw), original)
+})
+
+test('repair: task continuation rejects changed snapshots and unowned cursor fields', async t => {
+  const f = await fixture(t)
+  let tasks = Array.from({ length: 31 }, (_, i) => ({ task_ref: i.toString(16).padStart(32, '0'), key: `task-${i}` }))
+  t.mock.method(f.client, 'list', async () => ({ tasks }))
+  const first = unpack(await f.run({ action: 'tasks', args: { limit: 30 } })).value
+  assert.ok(first.task_page?.snapshot)
+  tasks = [{ task_ref: 'f'.repeat(32), key: 'inserted' }, ...tasks]
+  const changed = unpack(await f.run({ action: 'tasks', args: { offset: 30, snapshot: first.task_page.snapshot } }))
+  assert.equal(changed.ok, false)
+  assert.match(changed.error, /变化|changed/i)
+  for (const args of [{ offset: 30 }, { offset: -1 }, { limit: 0 }, { limit: 31 },
+    { snapshot: 'invalid' }, { sessionId: 'foreign' }, { connection_id: 'a'.repeat(64) }]) {
+    assert.equal(unpack(await f.run({ action: 'tasks', args })).ok, false)
+  }
+})
+
+test('repair: missing or upstream-incomplete task lists never claim known empty', async t => {
+  const f = await fixture(t)
+  for (const raw of [{}, { tasks: null }, { tasks: 'missing' }, { tasks: [], error: 'read failed' },
+    { tasks: [], available: false }, { tasks: [], complete: false },
+    { tasks: [], truncated: true }, { tasks: [], projection: { omitted_fields: ['$.tasks'] } }]) {
+    t.mock.method(f.client, 'list', async () => raw)
+    const { value } = unpack(await f.run({ action: 'tasks' }))
+    assert.equal(value.task_page?.complete, false)
+    assert.equal(value.task_page?.source_complete, false)
+    if (!Array.isArray(raw.tasks)) {
+      assert.equal(value.task_page.available, false)
+      assert.equal(value.task_page.total, null)
+    }
+  }
+  t.mock.method(f.client, 'list', async () => ({ tasks: [] }))
+  const empty = unpack(await f.run({ action: 'tasks' })).value
+  assert.equal(empty.task_page.complete, true)
+  assert.equal(empty.task_page.total, 0)
+})
+
+test('repair: a submit connection fence is verified by native identity before dispatch', async t => {
+  const f = await fixture(t), other = await fixture(t)
+  const first = unpack(await f.run({ action: 'tasks' })).value
+  assert.match(first.connection_id ?? '', /^[a-f0-9]{64}$/)
+  t.mock.method(other.client, 'submit', () => assert.fail('Foreign connection must not consume a submission key'))
+  assert.equal(unpack(await other.run({ action: 'submit', args: {
+    key: 'original-key', query: 'original task', connection_id: first.connection_id,
+  } })).ok, false)
+  const calls = []
+  t.mock.method(f.client, 'submit', async (args, execution) => {
+    calls.push({ args, execution })
+    return { task_ref: REF, submission: 'unconfirmed' }
+  })
+  assert.equal(unpack(await f.run({ action: 'submit', args: {
+    key: 'original-key', query: 'original task', connection_id: first.connection_id,
+  } })).ok, true)
+  assert.deepEqual(calls[0].args, { key: 'original-key', query: 'original task' })
+  assert.equal(calls[0].execution.sessionId, 'workbench-agent')
 })

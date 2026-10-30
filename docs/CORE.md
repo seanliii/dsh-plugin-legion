@@ -233,6 +233,36 @@ python3.12 -m venv .venv
 
 这条个人配置只显式绑定 Codex，不授权所有成员，不借用其他登录或环境密钥。配置保存不等于真实请求验证；换提供方也不自动把旧会话发给它。
 
+#### 启动脚本依赖 HOME 时
+
+`check` 中的 `codex_executable_found: true` 只表示能找到程序路径，不代表它在隔离实例里能启动。
+个人包装脚本可能从 `$HOME` 拼出另一个程序位置；军团保留独立 `HOME`／`CODEX_HOME` 后，
+这个位置可能不存在，导致 `rc127`。这发生在模型调用之前，不能归因于模型回答能力。
+
+先找到本人已安装、已审查的**原生 Codex 程序**，在同样的隔离目录下只查版本：
+
+```sh
+env HOME="/绝对路径/我的军团实例/home" \
+  CODEX_HOME="/绝对路径/我的军团实例/codex-home" \
+  "/本人实际安装目录/codex" --version
+```
+
+确认退出 0 后，让这个实例的原有 `serve` 启动环境优先使用该程序目录：
+
+```sh
+PATH="/本人实际安装目录:$PATH" .venv/bin/python -I meyo.py serve \
+  --state-dir "/绝对路径/我的军团实例"
+```
+
+路径是模板，不要求所有用户安装同一应用。不复制登录 token，不把 HOME 改回日常账号，
+也不在找不到程序时静默换模型；服务重启和后续实际任务分别验证。
+
+若任务在启动前已明确失败、没有原生 checkpoint，`legion_resume` 可能如实返回
+`no recoverable tasks`。这不代表恢复成功，也不是让操作者改写旧任务状态。
+确认原失败和副作用后，可用既有 `legion_submit.previous_task_ref` 发起有原任务来源的接续，
+使用新的稳定接续 key，并保留首次失败。接续是新运行，不冒充原生 checkpoint 恢复，
+更不能用于盲目重发结果未知的操作。
+
 #### 可选：明确采用自己的长期方向
 
 核心包中的 `docs/examples/pilot-goals.md` 是可编辑示例，不会默认生效。
