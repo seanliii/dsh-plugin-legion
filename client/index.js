@@ -110,7 +110,7 @@ window.__ModuleLoader__.load({
       return {
         key: member.key, installed: bool(member.installed),
         connected: bool(member.readiness?.connected), verified: bool(member.readiness?.verified),
-        available: bool(member.available), selectable: member.entry_points?.execution?.selectable === true,
+        available: bool(member.available), selectable: bool(member.entry_points?.execution?.selectable),
       }
     }
 
@@ -227,6 +227,8 @@ window.__ModuleLoader__.load({
         if (entryId !== state.configEntry || namespace !== state.configNamespace
           || configText(config?.value) !== configText(state.config?.value)) {
           invalidate(['flowStatus'], { flow: null, flowStale: false, flowRunKey: null })
+          // Member observations carry a candidate snapshot, not just a session.
+          invalidate(['members'], { members: null })
         }
         return config
       }
@@ -537,8 +539,10 @@ window.__ModuleLoader__.load({
             return { sessions: ctx.sessions.list.getSnapshot() }
           })
         },
-        loadMembers() {
-          return run('members', async id => ({ members: await command(id, 'runtime', { view: 'members' }) }), true)
+        loadMembers(offset = 0) {
+          return run('members', async id => ({ members: await command(id, 'runtime', {
+            view: 'members', ...(offset > 0 ? { offset } : {}),
+          }) }), true)
         },
         async loadFlow() {
           if (flowMutations.has(state.sessionId)) return Promise.resolve(false)
@@ -877,7 +881,7 @@ window.__ModuleLoader__.load({
       .legion-panel *{box-sizing:border-box}.legion-wrap{max-width:1120px;margin:auto;padding:36px 40px 64px}
       .legion-panel h1{font-size:30px;line-height:1.3;font-weight:650;letter-spacing:-.7px;margin:8px 0 12px}.legion-panel h2{font-size:18px;line-height:1.4;font-weight:620;margin:0}.legion-panel h3{font-size:15px;line-height:1.4;margin:0;font-weight:600}.legion-panel p{margin:7px 0}
       .legion-eyebrow{font-size:11px;letter-spacing:1.8px;font-weight:650;color:var(--lp-muted)}.legion-muted,.legion-help{color:var(--lp-muted)}.legion-help{font-size:12px;line-height:1.6}.legion-lead{max-width:690px;font-size:14px;color:var(--lp-muted)}
-      .legion-top,.legion-row,.legion-toolbar{display:flex;gap:12px;align-items:center;flex-wrap:wrap}.legion-top{justify-content:space-between;align-items:flex-start}.legion-row.between{justify-content:space-between}.legion-toolbar{margin:18px 0}
+      .legion-top,.legion-row,.legion-toolbar{display:flex;gap:12px;align-items:center;flex-wrap:wrap}.legion-top{display:grid;grid-template-columns:minmax(0,1fr) 230px;gap:26px;align-items:start}.legion-row.between{justify-content:space-between}.legion-toolbar{margin:18px 0}
       .legion-session{display:grid;gap:5px;min-width:230px;max-width:380px}.legion-panel button,.legion-panel input,.legion-panel select,.legion-panel textarea{font:inherit;color:inherit}.legion-panel button{cursor:pointer;border:1px solid var(--lp-border);border-radius:9px;padding:8px 13px;background:var(--lp-bg);line-height:1.4;min-height:36px}.legion-panel button:hover:not(:disabled):not([aria-disabled=true]){background:var(--dsw-alias-interactive-bg-hover,#f0f2f8)}.legion-panel button:disabled,.legion-panel button[aria-disabled=true]{cursor:not-allowed;opacity:.48}.legion-panel button.primary{background:var(--dsw-alias-button-primary-fill,#4866dd);color:var(--dsw-alias-label-primary-inverted,#fff);border-color:transparent}.legion-panel button.primary:hover:not(:disabled):not([aria-disabled=true]){background:var(--dsw-alias-button-primary-hover,#3c59ce)}
       .legion-panel :focus-visible{outline:2px solid var(--lp-accent);outline-offset:3px}.legion-panel input:not([type=checkbox]):not([type=radio]),.legion-panel select,.legion-panel textarea{background:var(--lp-bg);border:1px solid var(--lp-border);border-radius:9px;padding:9px 11px;min-width:0;width:100%}.legion-panel input[type=checkbox],.legion-panel input[type=radio]{width:17px;height:17px;accent-color:var(--lp-accent);flex:none}.legion-panel textarea{resize:vertical;min-height:110px}
       .legion-tabs{display:flex;gap:5px;overflow:auto;border-bottom:1px solid var(--lp-border);margin:27px 0 25px;padding-bottom:10px}.legion-tabs button{border:0;white-space:nowrap;background:none;color:var(--lp-muted)}.legion-tabs button[aria-selected=true]{background:var(--lp-card);color:var(--lp-fg);font-weight:600}
@@ -887,7 +891,8 @@ window.__ModuleLoader__.load({
       .legion-panel a{color:var(--lp-accent);text-decoration:underline;text-underline-offset:3px}.legion-panel code{font-family:ui-monospace,SFMono-Regular,monospace;font-size:12px}.legion-panel details{border-top:1px solid var(--lp-border);padding-top:12px;margin-top:14px}.legion-panel summary{cursor:pointer;font-size:12px;color:var(--lp-muted)}.legion-panel pre{font-size:11px;line-height:1.6;white-space:pre-wrap;overflow-wrap:anywhere;max-height:360px;overflow:auto;background:var(--lp-card);padding:12px;border-radius:8px}
       .legion-search{flex:1;min-width:160px}.legion-form{display:grid;gap:17px;max-width:720px}.legion-field{display:grid;gap:6px}.legion-form .legion-row>label{flex:1;min-width:180px}.legion-section{margin-top:28px}.legion-list{display:grid;gap:10px}.legion-result-count{font-size:12px;color:var(--lp-muted);margin:10px 0}.legion-task{padding:15px;border:1px solid var(--lp-border);border-radius:10px}.legion-task code{display:block}.legion-panel .legion-busy{font-size:12px;color:var(--lp-muted)}
       .legion-steps{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:8px;margin:0 0 24px}.legion-steps button{text-align:left;padding:12px 14px;background:var(--lp-card)}.legion-steps button[aria-current=step]{border-color:var(--lp-accent);color:var(--lp-accent);font-weight:600}.legion-team-lead{background:var(--lp-card);border:1px solid var(--lp-border);border-radius:14px;padding:18px 20px;margin:16px 0}.legion-step-actions{display:flex;justify-content:space-between;gap:12px;flex-wrap:wrap;margin-top:26px;padding:14px 0;border-top:1px solid var(--lp-border);position:sticky;bottom:0;z-index:2;background:var(--lp-bg)}.legion-choice{display:flex;align-items:flex-start;gap:11px;padding:18px;border:1px solid var(--lp-border);border-radius:12px;cursor:pointer}.legion-choice.chosen{border-color:var(--lp-accent);background:var(--lp-card)}.legion-choice input{flex:none;margin-top:5px;accent-color:var(--lp-accent)}.legion-choice strong{display:block}.legion-choice p{margin:4px 0 0}.legion-flow-heading{display:flex;justify-content:space-between;align-items:flex-start;gap:14px;flex-wrap:wrap}.legion-flow-time{font-variant-numeric:tabular-nums}.legion-team-summary{display:flex;gap:8px;flex-wrap:wrap;margin:12px 0 20px}
-      @media(max-width:760px){.legion-wrap{padding:22px 18px 45px}.legion-grid{grid-template-columns:1fr}.legion-panel h1{font-size:25px}.legion-session{max-width:100%;width:100%}.legion-top{gap:20px}.legion-card{padding:16px}.legion-toolbar{gap:9px}.legion-tabs{margin-top:22px}.legion-form .legion-row>label{min-width:100%}}
+      .legion-crew{margin:22px 0}.legion-crew .legion-grid{margin-top:12px}.legion-crew .legion-card{border-top:3px solid var(--lp-accent)}.legion-crew .legion-toolbar{margin:12px 0 0}.legion-crew .legion-eyebrow{letter-spacing:.8px;margin-bottom:8px}.legion-crew code{display:block;overflow-wrap:anywhere}.legion-member-page{padding:12px 0;display:flex;gap:12px;align-items:center;justify-content:space-between;flex-wrap:wrap}
+      @media(max-width:760px){.legion-wrap{padding:22px 18px 45px}.legion-grid{grid-template-columns:1fr}.legion-panel h1{font-size:25px}.legion-session{max-width:100%;width:100%;min-width:0}.legion-top{grid-template-columns:minmax(0,1fr);gap:20px}.legion-card{padding:16px}.legion-toolbar{gap:9px}.legion-tabs{margin-top:22px}.legion-form .legion-row>label{min-width:100%}}
       @media(max-width:440px){.legion-steps{gap:5px}.legion-steps button{padding:10px 8px;font-size:12px}.legion-step-actions>button{flex:1}.legion-team-lead{padding:15px}}
       @media(prefers-reduced-motion:reduce){.legion-panel *{scroll-behavior:auto}}
     `
@@ -1141,6 +1146,9 @@ window.__ModuleLoader__.load({
           if (state.sessionId && state.config?.status === 'ready') void controller.loadFlow()
         }, [state.sessionId, state.config?.revision, state.configEntry])
         React.useEffect(() => {
+          if (state.sessionId && state.config?.status === 'ready') void controller.loadMembers()
+        }, [state.sessionId, state.config?.revision, state.configEntry, state.configNamespace])
+        React.useEffect(() => {
           if (state.sessionId && state.available.models) void controller.loadModelStatus()
         }, [state.sessionId, state.available.models, state.flow])
         React.useEffect(() => {
@@ -1195,10 +1203,102 @@ window.__ModuleLoader__.load({
           setTab('add')
           void controller.inspectSource(item.repository)
         }
-        const sourceOnlyCount = rows(state.members?.runtime?.harnesses).filter(member => !memberFacts(member).selectable).length
-        const members = rows(state.members?.runtime?.harnesses).filter(member => memberFacts(member).selectable)
+        const memberRows = rows(state.members?.runtime?.harnesses).filter(record)
+        const sourceOnlyCount = memberRows.filter(member => memberFacts(member).selectable === false).length
+        const members = memberRows.filter(member => memberFacts(member).selectable !== false)
           .filter(member => `${member.key} ${member.display_name || ''}`.toLowerCase().includes(memberFilter.toLowerCase()))
-        const selectable = member => memberFacts(member).selectable
+        const selectable = member => typeof member.key === 'string' && member.key.length > 0
+          && memberFacts(member).selectable === true
+        const observedText = value => typeof value === 'string' ? value : ''
+        const memberName = member => observedText(member.display_name) || observedText(member.key)
+          || t('身份未确认', 'Unknown identity')
+        const memberPage = state.members?.member_page
+        const memberSnapshotNotice = () => h(React.Fragment, null,
+          state.members?.runtime?.public_catalog_only === true ? h('p', { className: 'legion-help', role: 'status' },
+            t('这是公开目录，不是你的运行环境；安装、配置和执行状态仍需在自己的核心中核对。',
+              'This is a public catalog, not your runtime. Check installation, configuration and execution in your own core.')) : null,
+          state.members?.runtime?.warming || state.members?.runtime?.stale ? h('p', { className: 'legion-help', role: 'status' },
+            t('核心返回的是预热或过期缓存。下面保留原回报，不把它当成刚刚完成的实跑。',
+              'The core returned warming or stale cached facts. These are retained observations, not a just-completed run.'))
+            : state.members?.runtime?.from_cache === true ? h('p', { className: 'legion-help' },
+              t('这次读取使用了服务缓存，不是一次新的模型实跑。', 'This read used a service cache, not a new model execution.')) : null)
+        const memberConfiguration = member => {
+          const modelName = observedText(member.model?.display_name) || observedText(member.model?.model)
+          const reason = member.model?.configuration_error == null ? ''
+            : errorText(typeof member.model.configuration_error === 'string'
+              ? member.model.configuration_error : JSON.stringify(member.model.configuration_error))
+          return h(React.Fragment, null,
+          h('p', { className: 'legion-help' }, bool(member.model?.configured) === false
+            ? t('核心回报：模型未配置', 'Core reports: model not configured')
+            : bool(member.model?.configured) === true
+              ? t('核心回报：模型已配置', 'Core reports: model configured')
+              : t('核心模型配置尚未确认', 'Core model configuration is unknown')),
+          modelName ? h('p', { className: 'legion-help' }, t('核心侧模型：', 'Core-side model: '), modelName) : null,
+          reason ? h('code', null, reason) : null,
+          member.model?.configured === false ? h('p', { className: 'legion-help' },
+            t('请在核心的原生配置入口核对模型；这里的 DSH 模型不会自动替核心配好。',
+              'Check the model in the core’s native settings. Choosing a DSH model does not configure this member.')) : null,
+          h('p', { className: 'legion-help' }, member.readiness?.verified === true
+            ? t('核心记录过该成员的执行验证；是否对应当前配置及本次任务仍需核对。',
+              'The core has execution verification for this member. Its applicability to the current configuration and task still needs checking.')
+            : t('本次未取得执行验证记录；不等于已经失败。', 'No execution verification was obtained in this read; that is not a recorded failure.')),
+          member.readiness?.historical_verified === true ? h('p', { className: 'legion-help' },
+            t('历史成功不代表当前配置成功。', 'Historical success does not establish success with the current configuration.')) : null)
+        }
+        const renderCrew = () => {
+          const keys = rows(state.config?.value?.candidateHarnesses)
+          const selected = rows(state.members?.selected?.items).filter(record)
+          const selectedRows = keys.map(key => selected.find(item => item.key === key) || { key, observed: false })
+          return h('section', { className: 'legion-crew', 'aria-label': t('战队当前观察', 'Current team observations') },
+            h('div', { className: 'legion-row between' },
+              h('h3', null, t('你的战队，准备得怎样？', 'How is your team configured?')),
+              h(Button, { disabled: !state.sessionId || busy('members') || busy('modelStatus'),
+                onClick: () => { void controller.loadMembers(); if (state.available.models) void controller.loadModelStatus() } },
+                t('刷新战队状态', 'Refresh team facts'))),
+            h('p', { className: 'legion-help' }, t('下面是配置与服务回报，不是实时参战名单。真正做了什么，在原会话和成果里看。',
+              'These are configuration and service observations, not a live participation roster. Inspect contributions in the original conversation and artifacts.')),
+            memberSnapshotNotice(), error('members'),
+            h('div', { className: 'legion-grid' },
+              h('article', { className: 'legion-card' },
+                h('div', { className: 'legion-eyebrow' }, t('你的主场', 'YOUR HOME BASE')),
+                h('h3', null, t('DSH · 原生作者', 'DSH · Native author')),
+                h('p', { className: 'legion-help' }, state.modelStatus?.available === true
+                  ? t('会话模型已选，并在原生目录中可用。', 'The selected session model is listed in the native catalog.')
+                  : state.modelStatus?.available === false
+                    ? t('当前会话尚无可用模型。', 'No usable model in this conversation.')
+                    : t('会话模型状态尚未取得。', 'Session model status has not been read.')),
+                state.modelStatus?.model ? h('code', null, state.modelStatus.model) : null,
+                h('p', { className: 'legion-help' }, t('沿用你的工作区、工具和权限。模型可用不代表任务成功，也不代表下面的战友已配好。',
+                  'Keeps your workspace, tools and permissions. Availability is not task success or configuration of the teammates below.')),
+                h('div', { className: 'legion-toolbar' },
+                  h(Button, { primary: true, disabled: !state.sessionId || !state.available.navigation,
+                    onClick: () => controller.openFlowSession() }, t('打开工作会话，看实际结果', 'Open conversation and results')))),
+              ...selectedRows.map(member => h('article', { className: 'legion-card', key: member.key },
+                h('div', { className: 'legion-eyebrow' }, t('你选的核心侧战友', 'YOUR SELECTED CORE TEAMMATE')),
+                h('h3', null, memberName(member)),
+                member.observed !== true ? h('p', { className: 'legion-help' },
+                  t('本次未观察到这位战友的状态；不据此认定未安装或不可用。',
+                    'This teammate was not observed in the current response; that does not mean absent or unavailable.'))
+                  : memberConfiguration(member),
+                h('div', { className: 'legion-toolbar' },
+                  h(Button, { onClick: () => openTab('config') }, t('查看核心连接', 'View core connection')),
+                  member.model?.configured === false ? h('a', {
+                    href: 'https://github.com/seanliii/dsh-plugin-legion/blob/main/docs/CORE.md#3-配置本人模型',
+                    target: '_blank', rel: 'noopener noreferrer',
+                  }, t('核心模型配置方法', 'Core model setup guide')) : null,
+                  h(Button, { onClick: () => { setEditingTeam(true); setTeamStep(0) } },
+                    t('查看或更换战友', 'Inspect or change companions'))))),
+              !keys.length ? h('article', { className: 'legion-card' },
+                h('div', { className: 'legion-eyebrow' }, t('按任务组织', 'ORGANIZED FOR THE TASK')),
+                h('h3', null, t('让军团自己选人', 'Let Legion choose')),
+                h('p', { className: 'legion-help' }, t('你没有固定候选。军团根据目标和可用能力选人；这不表示目录里的成员都已参与。',
+                  'No fixed candidates. Legion chooses for the goal and available capabilities; catalog entries are not proof of participation.')),
+                h(Button, { onClick: () => { setEditingTeam(true); setTeamStep(0) } },
+                  t('查看可加入的战友', 'Explore companions'))) : null),
+            state.members?.selected?.complete === false ? h('p', { className: 'legion-help' },
+              t('这里是精简回报；未取得的配置或执行事实保持未知。',
+                'These are compact observations. Missing configuration or execution facts remain unknown.')) : null)
+        }
         const toggleMember = (key, checked) => {
           setCandidates(previous => checked ? [...new Set([...previous, key])] : previous.filter(value => value !== key))
           setCandidateDirty(true)
@@ -1216,12 +1316,15 @@ window.__ModuleLoader__.load({
             'Legion members could not be read. Check the address and service under Connection; Discover and DSH capability packages remain available.',
           )) : null,
           error('members'), status('members'),
+          memberRows.length !== rows(state.members?.runtime?.harnesses).length
+            || memberRows.some(member => typeof member.key !== 'string' || !member.key) ? h('p', { className: 'legion-help', role: 'status' },
+              t('部分记录缺少身份或记录无法展示；未据此新增战友或判断可用性。',
+                'Some records have missing identities or cannot be displayed; they do not create companions or establish availability.')) : null,
           !state.sessionId ? h(Empty, null, t('先在右上角选一个会话，成员和任务就会归到这段对话里。', 'Select a session above to keep members and tasks in the right conversation.')) : null,
-          state.members?.runtime?.warming || state.members?.runtime?.stale ? h('div', { className: 'legion-callout' },
-            t('核心正在预热，或正在返回缓存。下面保留真实未知状态；需要时可刷新。', 'The core is warming or serving cached facts. Unknowns stay unknown; refresh when needed.')) : null,
+          memberSnapshotNotice(),
           h('div', { className: 'legion-toolbar' },
             h('div', { className: 'legion-search' }, h('input', { value: memberFilter,
-              onChange: event => setMemberFilter(event.target.value), placeholder: t('按成员名称筛选', 'Filter member names'), 'aria-label': t('筛选成员', 'Filter members') })),
+              onChange: event => setMemberFilter(event.target.value), placeholder: t('筛选本页成员', 'Filter this page'), 'aria-label': t('筛选成员', 'Filter members') })),
             h(Button, { disabled: busy('configSave'), onClick: () => { setCandidates([]); setCandidateDirty(true) } }, t('交给军团选人', 'Let Legion choose')),
             h(Button, { onClick: () => openTab('add') }, t('添加新的战友或工具', 'Add a companion or tool'))),
           error('configSave'), error('config'),
@@ -1233,22 +1336,31 @@ window.__ModuleLoader__.load({
             return h('article', { key: member.key, className: `legion-card${selected ? ' chosen' : ''}` },
               h('label', { className: 'legion-title' },
                 h('input', { type: 'checkbox', checked: selected, disabled: !selectable(member) || !state.config?.writable || busy('configSave'),
-                  'aria-label': `${t('选择成员', 'Select member')} ${member.display_name || member.key}`,
+                  'aria-label': `${t('选择成员', 'Select member')} ${memberName(member)}`,
                   onChange: event => toggleMember(member.key, event.target.checked) }),
-                h('div', null, h('h3', null, member.display_name || member.key), h('code', { className: 'legion-muted' }, member.key))),
-              h('p', { className: 'description' }, member.profile?.intro || member.description || t('服务未提供介绍', 'No description from the service')),
+                h('div', null, h('h3', null, memberName(member)), h('code', { className: 'legion-muted' }, observedText(member.key)))),
               h('div', { className: 'legion-badges' },
                 h(Badge, null, facts.installed === true ? t('已安装', 'Installed') : facts.installed === false ? t('未安装', 'Not installed') : t('安装状态未知', 'Installation unknown')),
                 h(Badge, { good: facts.connected === true }, facts.connected === true ? t('连接已观察', 'Connection observed') : facts.connected === false ? t('尚未连接', 'Not connected') : t('连接未知', 'Connection unknown')),
-                h(Badge, { good: facts.verified === true }, facts.verified === true ? t('服务记录过验证', 'Service reports verification') : t('未验证执行', 'Execution unverified')),
-                !facts.selectable && h(Badge, null, t('工具来源，不是执行成员', 'Tool source, not an execution member'))),
-              member.model?.display_name || member.model?.model ? h('p', { className: 'legion-help' },
-                t('当前模型：', 'Current model: '), member.model.display_name || member.model.model) : null,
-              h(Details, { value: { ...facts, readiness: member.readiness, entry_points: member.entry_points } }))
+                facts.selectable === null ? h(Badge, null, t('执行身份未知', 'Execution role unknown')) : null),
+              memberConfiguration(member),
+              h(Details, { value: { ...facts, model: member.model, readiness: member.readiness, entry_points: member.entry_points,
+                catalog_description_not_current_verification: member.profile?.intro || member.description } }))
           })),
+          memberPage ? h('div', { className: 'legion-member-page', 'aria-label': t('成员分页', 'Member pages') },
+            h('span', { className: 'legion-help' },
+              t(`本页 ${memberPage.shown_count ?? 0} 条目录记录 / 本次返回 ${memberPage.total ?? '未知'} 条；不是已安装数量。`,
+                `${memberPage.shown_count ?? 0} catalog records on this page / ${memberPage.total ?? 'unknown'} observed; not an installation count.`)),
+            h('div', { className: 'legion-row' },
+              h(Button, { disabled: busy('members') || !(memberPage.offset > 0),
+                onClick: () => { setMemberFilter(''); void controller.loadMembers() } },
+                t('返回第一页成员', 'Back to first members')),
+              h(Button, { disabled: busy('members') || !Number.isSafeInteger(memberPage.next_offset),
+                onClick: () => { setMemberFilter(''); void controller.loadMembers(memberPage.next_offset) } },
+                t('下一页成员', 'Next members')))) : null,
           sourceOnlyCount ? h('p', { className: 'legion-help' },
-            t(`另有 ${sourceOnlyCount} 个工具来源，不作为执行战友；可以在「找能力」中查看。`,
-              `${sourceOnlyCount} tool sources are separate from execution companions; explore them in Discover.`)) : null,
+            t(`本页另有 ${sourceOnlyCount} 个工具来源，不作为执行战友；可以在「找能力」中查看。`,
+              `${sourceOnlyCount} tool sources on this page are separate from execution companions; explore them in Discover.`)) : null,
           h(Details, { value: state.members && { source: state.members.source, observed_at: state.members.observed_at,
             verification: state.members.verification, projection: state.members.projection } }))
 
@@ -1281,6 +1393,16 @@ window.__ModuleLoader__.load({
           const time = value => value ? new Date(value).toLocaleString(
             t('zh-CN', 'en-US'), { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' },
           ) : t('未取得', 'Unknown')
+          const scheduleCard = item => h('article', { className: 'legion-task', key: item.id },
+            h('strong', null, item.title || t('原生自动任务', 'Native scheduled work')),
+            h('p', { className: 'legion-help legion-flow-time' }, item.status === 'active'
+              ? `${t('下次：', 'Next: ')}${time(item.scheduledAt)}` : t('当前不再等待投递', 'Not awaiting another delivery')),
+            h('p', { className: 'legion-help' }, item.matchesConfiguration === true
+              ? t('此任务与当前默认配置一致', 'This task matches the current defaults')
+              : item.matchesConfiguration === false ? t('此任务保留旧配置，尚未同步', 'This task retains older settings')
+                : t('此任务与默认配置的关系尚未核实', 'This task’s settings have not been matched to the defaults')),
+            item.lastDelivery?.deliveredAt ? h('p', { className: 'legion-help legion-flow-time' },
+              t('已投递：', 'Delivered: '), time(item.lastDelivery.deliveredAt)) : null)
           return h(React.Fragment, null,
             h('div', { className: 'legion-flow-heading' },
               h('div', null, h('h2', null, profile?.name || t('当前会话的已有计划', 'Existing plans for this conversation')),
@@ -1299,6 +1421,7 @@ window.__ModuleLoader__.load({
                 : profile.cadence === 'daily' ? t('默认频率：每日', 'Default cadence: daily') : t('默认频率：每周', 'Default cadence: weekly')))
               : h('p', { className: 'legion-callout' }, t('默认战队配置尚未设置；下方已有计划仍可能运行，可以暂停，不会因为配置缺失就自动停止。',
                 'Team defaults are not configured. Existing plans may still run and can be paused; missing defaults do not stop them.')),
+            renderCrew(),
             configurationMatches === false ? h('div', { className: 'legion-callout', role: 'status' },
               h('strong', null, state.flowStale ? t('上次核对：当前会话计划仍使用旧配置', 'Previous check: this conversation still used older settings')
                 : t('当前会话仍使用旧配置，尚未同步', 'This conversation still uses older settings')),
@@ -1323,8 +1446,6 @@ window.__ModuleLoader__.load({
               h('p', { className: 'legion-help' }, t('DSH 到时间会在这个工作会话继续。任务已安排、模型实际执行和改进有效是三件事；最终结果在原会话查看。',
                 'DSH resumes this conversation when work is due. Scheduling, model execution and a verified improvement are separate; inspect results in the original conversation.')),
               h('div', { className: 'legion-toolbar' },
-                h(Button, { primary: true, disabled: !state.sessionId || !state.available.navigation,
-                  onClick: () => controller.openFlowSession() }, t('打开工作会话，看实际结果', 'Open conversation and results')),
                 h(Button, { disabled: !state.sessionId || busy('flowStatus') || flowBusy,
                   onClick: () => controller.loadFlow() }, t('刷新安排', 'Refresh schedules'))),
               !state.available.navigation ? h('p', { className: 'legion-help' },
@@ -1334,17 +1455,10 @@ window.__ModuleLoader__.load({
             status('flowStatus'),
             ...rows(flow?.observations).filter(note => note.code !== 'delivery_not_execution').map((note, index) =>
               h('p', { className: 'legion-help', key: index }, note.message)),
-            h('div', { className: 'legion-list' }, ...schedules.map(item =>
-              h('article', { className: 'legion-task', key: item.id },
-                h('strong', null, item.title || t('原生自动任务', 'Native scheduled work')),
-                h('p', { className: 'legion-help legion-flow-time' }, item.status === 'active'
-                  ? `${t('下次：', 'Next: ')}${time(item.scheduledAt)}` : t('当前不再等待投递', 'Not awaiting another delivery')),
-                h('p', { className: 'legion-help' }, item.matchesConfiguration === true
-                  ? t('此任务与当前默认配置一致', 'This task matches the current defaults')
-                  : item.matchesConfiguration === false ? t('此任务保留旧配置，尚未同步', 'This task retains older settings')
-                    : t('此任务与默认配置的关系尚未核实', 'This task’s settings have not been matched to the defaults')),
-                item.lastDelivery?.deliveredAt ? h('p', { className: 'legion-help legion-flow-time' },
-                  t('已投递：', 'Delivered: '), time(item.lastDelivery.deliveredAt)) : null))),
+            h('div', { className: 'legion-list' }, ...active.map(scheduleCard)),
+            schedules.some(item => item.status !== 'active') ? h('details', null,
+              h('summary', null, t('以往投递与暂停记录', 'Past deliveries and paused plans')),
+              h('div', { className: 'legion-list' }, ...schedules.filter(item => item.status !== 'active').map(scheduleCard))) : null,
             h('div', { className: 'legion-step-actions' },
               h(Button, { disabled: !profile || !state.sessionId || flowBusy,
                 onClick: () => controller.runFlow() }, state.flowRunKey
@@ -1684,8 +1798,9 @@ window.__ModuleLoader__.load({
           h('div', { className: 'legion-wrap' },
             h('header', { className: 'legion-top' },
               h('div', null, h('div', { className: 'legion-eyebrow' }, 'LEGION / DSH'),
-                h('h1', null, t('你的 DSH，有了一支战队', 'Your DSH, with a team alongside')),
-                h('p', { className: 'legion-lead' }, t('各路 Harness 围绕同一个目标协作，开放工具、互相学习。你定方向，让战队自己发现、行动和改进。', 'Harnesses work toward one goal, sharing tools and learning from one another. Set the direction; let the team discover, act and improve.'))),
+                h('h1', null, t('一个目标，一支共同进化的战队', 'One goal. A team that grows together.')),
+                h('p', { className: 'legion-lead' }, t('让各路 Harness 一起做成你的事。围绕同一作品协作，工具相互借用，有效改进留给下一次工作。',
+                  'Bring leading harnesses to the same work. Collaborate on one outcome, share tools and carry useful improvements into the next task.'))),
               h('label', { className: 'legion-session' }, h('span', { className: 'legion-help' }, t('当前工作会话', 'Working session')),
                 h('select', { value: state.sessionId, 'aria-label': t('当前工作会话', 'Working session'), onChange: event => selectSession(event.target.value) },
                   h('option', { value: '' }, t('请选择会话', 'Select a session')),

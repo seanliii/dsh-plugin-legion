@@ -49,6 +49,8 @@ test('member presentation preserves unknown installation and separate observed r
   assert.equal(memberFacts({ key: 'tools-only', available: true,
     entry_points: { execution: { selectable: false } } }).selectable, false)
   assert.equal(memberFacts({ key: 'untyped', installed: 'yes', available: 'ready' }).installed, null)
+  assert.equal(memberFacts({ key: 'untyped' }).selectable, null,
+    'Missing execution facts are unknown, not a declaration that this is a tool-only source')
 })
 
 test('untrusted result links never become script, file or credential links', async () => {
@@ -926,7 +928,7 @@ test('downloads reuse the native human command with an observed id, never a retu
 // In-process projection, not browser acceptance. Keep React child slots/keys
 // and model the native disabled/removal focus loss observed on DSH 50935.
 async function statusPanel(t, status, { taskCount = 1, reducedMotion = false, membersError,
-  locale = 'zh', readTask = true, memberRows = [], modelCatalog, configValue, flow } = {}) {
+  locale = 'zh', readTask = true, memberRows = [], memberReply, modelCatalog, configValue, flow } = {}) {
   let definition, Page, cursor = 0
   const label = (zh, en) => locale === 'zh' ? zh : en
   const slots = [], cleanups = [], calls = [], effects = [], focusCalls = [], scrollCalls = []
@@ -987,6 +989,8 @@ async function statusPanel(t, status, { taskCount = 1, reducedMotion = false, me
       }
       const { action, args } = JSON.parse(line.slice('/legion-panel '.length))
       if (action === 'runtime' && membersError) throw new Error(membersError)
+      if (action === 'runtime' && memberReply) return reply(action,
+        typeof memberReply === 'function' ? await memberReply(id, args) : memberReply)
       if (action.startsWith('flow_')) return reply(action, typeof flow === 'function' ? await flow(id, action, args) : flow)
       return reply(action, action === 'status' ? typeof status === 'function' ? await status(id, args) : status
         : action === 'tasks' ? { tasks: Array.from({ length: taskCount }, (_, index) => ({
@@ -1175,6 +1179,148 @@ const flowProfile = {
 async function settleFlowPanel(panel) {
   for (let i = 0; i < 5; i++) { panel.render(); await turn() }
 }
+
+test('team overview separates the native author model from cached selected-core configuration facts', async t => {
+  const panel = await statusPanel(t, {}, { readTask: false,
+    configValue: { teamProfile: flowProfile, candidateHarnesses: ['codex'] },
+    modelCatalog: { default: { provider: 'fixture', model: 'author-model' },
+      groups: [{ id: 'fixture', models: [{ id: 'author-model' }] }], failures: [] },
+    memberReply: { runtime: { harnesses: [], stale: true },
+      selected: { mode: 'configured', total: 1, shown_count: 1, complete: true, items: [
+        { key: 'codex', display_name: 'Codex', observed: true,
+          model: { configured: false, configuration_error: 'explicit_responses_not_configured' },
+          readiness: { verified: false, historical_verified: true },
+          entry_points: { execution: { selectable: true } } },
+      ] } },
+    flow: { code: 'ok', catalogVerified: true, enabled: false, schedules: [] },
+  })
+  await settleFlowPanel(panel)
+  const content = panel.text(panel.render())
+  assert.match(content, /DSH.*作者/)
+  assert.match(content, /author-model/)
+  assert.match(content, /Codex/)
+  assert.match(content, /核心回报.*模型未配置/)
+  assert.match(content, /explicit_responses_not_configured/)
+  assert.match(content, /缓存/)
+  assert.match(content, /历史.*不代表.*当前/)
+  assert.ok(panel.find('button', '刷新战队状态'))
+  assert.ok(panel.find('button', '打开工作会话，看实际结果'))
+  assert.equal(panel.calls.filter(call => /"action":"(?:submit|flow_run|flow_start)"/.test(call.line)).length, 0,
+    'Reading team facts must not start charged work or schedules')
+})
+
+test('a missing selected member and an untyped catalog row stay visible as unknown, not absent or tool-only', async t => {
+  const panel = await statusPanel(t, {}, { readTask: false,
+    configValue: { teamProfile: flowProfile, candidateHarnesses: ['not-observed'] },
+    memberReply: { runtime: { harnesses: [{ key: 'untyped', display_name: 'Unknown kind' }], public_catalog_only: true },
+      selected: { mode: 'configured', total: 1, shown_count: 1, complete: true,
+        items: [{ key: 'not-observed', observed: false }] } },
+    flow: { code: 'ok', catalogVerified: true, enabled: false, schedules: [] },
+  })
+  await settleFlowPanel(panel)
+  assert.match(panel.text(panel.render()), /not-observed/)
+  assert.match(panel.text(panel.render()), /本次未观察到/)
+  assert.match(panel.text(panel.render()), /公开目录/)
+  panel.find('button', '调整战队').props.onClick()
+  const content = panel.text(panel.render())
+  assert.match(content, /Unknown kind/)
+  assert.match(content, /执行身份未知/)
+  assert.doesNotMatch(content, /另有 1 个工具来源/)
+  const checkbox = panel.nodes(panel.render()).find(node =>
+    node.type === 'input' && node.props['aria-label'] === '选择成员 Unknown kind')
+  assert.equal(checkbox.props.disabled, true, 'Unknown selectability is visible but never grants selection')
+})
+
+test('member page controls request explicit offsets without concatenating unrelated snapshots', async t => {
+  const panel = await statusPanel(t, {}, { readTask: false,
+    memberReply: (_id, args) => ({
+      runtime: { harnesses: [{ key: `member-${args.offset || 0}`, entry_points: { execution: { selectable: true } } }] },
+      member_page: { offset: args.offset || 0, limit: 12, total: 25, shown_count: 1,
+        next_offset: (args.offset || 0) < 24 ? (args.offset || 0) + 12 : null, complete: false },
+    }),
+  })
+  await settleFlowPanel(panel)
+  panel.find('button', '下一页成员').props.onClick()
+  await settleFlowPanel(panel)
+  const content = panel.text(panel.render())
+  assert.match(content, /member-12/)
+  assert.doesNotMatch(content, /member-0(?:\D|$)/)
+  assert.ok(panel.calls.some(call => /"offset":12/.test(call.line)))
+})
+
+test('short member pages offer an honest return-to-first action rather than guessing a previous offset', async t => {
+  const panel = await statusPanel(t, {}, { readTask: false, memberReply: (_id, args) => ({
+    runtime: { harnesses: [{ key: `member-${args.offset || 0}`, entry_points: { execution: { selectable: true } } }] },
+    member_page: { offset: args.offset || 0, limit: 12, total: 9, shown_count: 1,
+      next_offset: args.offset === 3 ? 7 : args.offset === 7 ? null : 3, complete: false },
+  }) })
+  await settleFlowPanel(panel)
+  for (let i = 0; i < 2; i++) {
+    panel.find('button', '下一页成员').props.onClick()
+    await settleFlowPanel(panel)
+  }
+  assert.match(panel.text(panel.render()), /member-7/)
+  panel.find('button', '返回第一页成员').props.onClick()
+  await settleFlowPanel(panel)
+  assert.match(panel.text(panel.render()), /member-0/)
+  assert.equal(panel.find('button', '上一页成员'), undefined)
+})
+
+test('nested model errors remain text and historical verification is never assigned to the current configuration', async t => {
+  const row = { key: 'codex', observed: true, display_name: { unexpected: 'name' },
+    model: { configured: false, display_name: { wrong: true }, configuration_error: { code: 'nested-provider-error' } },
+    readiness: { verified: true }, entry_points: { execution: { selectable: true } } }
+  const panel = await statusPanel(t, {}, { readTask: false,
+    configValue: { teamProfile: flowProfile, candidateHarnesses: ['codex'] },
+    memberReply: { runtime: { harnesses: [row], stale: true },
+      selected: { items: [row], complete: true } },
+    flow: { catalogVerified: true, schedules: [] },
+  })
+  await settleFlowPanel(panel)
+  for (const node of panel.nodes(panel.render()).filter(node => ['code', 'h3'].includes(node.type))) {
+    for (const child of node.props.children) {
+      assert.ok(typeof child !== 'object' || child?.type,
+        'React cannot render an arbitrary service object as a child')
+    }
+  }
+  const content = panel.text(panel.render())
+  assert.match(content, /nested-provider-error/)
+  assert.match(content, /是否对应当前配置/)
+  assert.doesNotMatch(content, /此配置的执行验证/)
+})
+
+test('malformed member rows and missing identities do not crash the page or create a selectable companion', async t => {
+  const panel = await statusPanel(t, {}, { readTask: false, memberRows: [
+    null, 'broken-row', { display_name: 'Missing identity', entry_points: { execution: { selectable: true } } },
+  ] })
+  const content = panel.text(panel.render())
+  assert.match(content, /记录缺少身份|记录无法展示/)
+  const checkbox = panel.nodes(panel.render()).find(node =>
+    node.type === 'input' && node.props['aria-label'] === '选择成员 Missing identity')
+  assert.equal(checkbox.props.disabled, true)
+})
+
+test('a member response from an older connection or candidate configuration cannot populate the new team', async t => {
+  const { createController } = await helpers()
+  const request = deferred()
+  const controller = createController(context(() => request.promise))
+  t.after(() => controller.dispose())
+  const fixture = mappedConfiguration()
+  let notify, value = { baseUrl: 'https://one.example', candidateHarnesses: ['first'] }
+  fixture.form.getSnapshot = () => ({ status: 'ready', value, revision: 7, writable: true })
+  fixture.form.subscribe = listener => { notify = listener; return () => {} }
+  controller.attach('configuration', fixture.owner)
+  controller.selectSession('a')
+  await controller.loadConfig()
+  const loading = controller.loadMembers()
+  await turn()
+  value = { baseUrl: 'https://two.example', candidateHarnesses: ['second'] }
+  notify()
+  request.resolve(reply('runtime', { selected: { items: [{ key: 'first', observed: true }] } }))
+  await loading
+  assert.equal(controller.getSnapshot().members, null,
+    'The old response belongs to the old connection and candidate snapshot')
+})
 
 test('flow snapshots: global defaults never label an older session plan as having improvement switched off', async t => {
   const calls = []
