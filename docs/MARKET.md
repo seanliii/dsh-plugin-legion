@@ -1,22 +1,46 @@
 # Installation and publication / 安装与发布路线
 
-**0.4.2 已公开：可以从 DSH“发现”页安装，也可以使用固定 Git 命令。** 先按下方[Discover 步骤](#官方-discover-索引)或[Git 安装](#v042)启用连接器；需要委托工作，再[下载公开核心 v0.1.0](CORE.md#public-core-install)建立实例。核心是另包安装的技术预览，不随连接器打包。
+**0.5.0 已公开：原生组队、自动协作／发现／改进与持久恢复。** 先按下方[Discover 步骤](#官方-discover-索引)或[Git 安装](#v050)启用连接器；需要委托工作，再[下载公开核心 v0.1.0](CORE.md#public-core-install)建立实例。核心是另包安装的技术预览，不随连接器打包。
 
-固定版本、公开下载、原生页面安装和连接恢复的真实结果见 [0.4.2 验收记录](PLAN.md#v042)。本页为 `main` 上的后验说明，不移动已发布标签，不替换原 TGZ，也不借用 0.4.1 的验收。
+本版源码、包与验收边界见 [0.5.0 记录](PLAN.md#v050)。[0.4.2 验收](PLAN.md#v042)仅证明旧版。
+本页为 `main` 上的后验说明，不移动已发布标签，不替换原 TGZ。
 
-**0.4.2 uses Git distribution, not npm.** Install and enable the connector, then create your own instance from the public core v0.1.0 source archive. The core's first-party code is MIT, third-party licenses are retained, and post-release acceptance is recorded on GitHub `main`.
+**0.5.0 uses Git distribution, not npm.** Install and enable the connector, then create your own instance from the public core v0.1.0 source archive. Configure your own models before execution. The core's first-party code is MIT and third-party licenses are retained.
 
 ## 分清三种分发方式
 
 | 路线 | 提供什么 | npm 是否必需 |
 |---|---|---|
-| 官方 CLI 固定 Git 提交／标签 | 本版目标为 `v0.4.2`；下方 0.4.1 固定提交仍保留自己的历史回执。 | 不要求将此包发布到 npm；依赖获取仍可能联网。 |
+| 官方 CLI 固定 Git 提交／标签 | 本版为 `v0.5.0`；旧版标签仍保留自己的历史回执。 | 不要求将此包发布到 npm；依赖获取仍可能联网。 |
 | 官方 Discover 自托管索引 | 用户添加可信索引，安装其中声明的 Git 来源；下方提供本版的发布后索引入口。 | Git 来源不要求此包先发 npm。 |
 | 社区目录／1024Store | 提交一份目录 JSON；无 npm 可 **browse-only（仅浏览仓库）** 收录。 | 不是投稿前提；一键安装以商店实际提供的方式为准。 |
 
 社区目录、姐妹站安装界面与官方管理器是不同系统。已保存的姐妹站源码中，常规安装按钮主要提供 npm 路线；底层官方 CLI／命令转发不能概括成“npm-only”。GitHub 元数据也不证明有 Git 一键按钮。不要把来源说明、按钮存在、实际安装或官方背书混为一谈。
 
 ## 固定 Git 安装
+
+<a id="v050"></a>
+
+### v0.5.0：已公开的固定安装版本
+
+**2026-10-30 19:06:42（Asia/Shanghai）**发布；固定源码
+`090c82e273dcbf4912ab48906bf28f9f086ae53d`。需要 Node.js >=24.9.0 与 DSH `0.2.1-rc.2`。
+`web` 是示例 profile，保留 `-w`：
+
+```sh
+dsh plugin --profile web -w add 'github:seanliii/dsh-plugin-legion#v0.5.0'
+```
+
+安装后在 **DSH 插件页明确启用**，从侧栏「军团」完成组队。可保留旧 profile 再建立
+独立 profile 试用，不需要删除旧会话或旧版本。
+
+[v0.5.0 Release](https://github.com/seanliii/dsh-plugin-legion/releases/tag/v0.5.0) 提供
+原受审 `dsh-plugin-legion-0.5.0.tgz` 与 `SHA256SUMS`：**209,504 字节、32 文件**，
+SHA-256 `fc1195ef4210e0dac081eee7de7c1a32723858093c6b06a178c0dbbb1700405e`。
+发行包和固定 Git 同一源码；原包中的“开发版”字样保留封包时点，不通过覆盖附件修正文案。
+
+自动计划使用原生 DSH 模型和账号，不附带共享密钥。安排、投递与成功改进分别确认，
+并保留每周／每日／手动、暂停、原会话入口和配置快照差异。详见[使用流程](TEAM.md)。
 
 <a id="v042"></a>
 
@@ -121,9 +145,11 @@ Check actual bundle/plugin loading state in **DSH Plugins**, then open **Legion*
 https://raw.githubusercontent.com/seanliii/dsh-plugin-legion/main/marketplace.json
 ```
 
-索引卡片显示“军团 · 接入整个能力生态”与 **0.4.2**。点“安装”，核对确认框中的仓库和完整提交，再确认安装，最后点“立即启用”。这条路径已在无旧插件的新 profile 中实际走通，安装文件与发布包 **29/29 一致**。索引提交 `21b26ba` 只指向发行提交 `7ca96434ee077102d2e2459173fffa91747898b5`，不会让安装跟随可变的 `main`。
+索引提供 **0.5.0**，卡片为“军团 · Harness 协同进化战队”。点“安装”，核对确认框
+中的仓库和完整提交 `090c82e273dcbf4912ab48906bf28f9f086ae53d`，再确认安装并启用。
+旧 **0.4.2** 记录仍保留；索引文档可以更新，但代码不会跟随可变的 `main`。
 
-In DSH: **Plugins → More under Experimental plugins → enable Custom plugin market → back to Plugins → Discover → Add index source**. Add the URL above, review the pinned Git commit, install and explicitly enable Legion. This flow was exercised in a fresh profile and all 29 installed files matched the released package. It is native Discover installation, not npm publication or 1024Store acceptance.
+In DSH: **Plugins → More under Experimental plugins → enable Custom plugin market → back to Plugins → Discover → Add index source**. Add the URL above, review the pinned 0.5.0 Git commit, install and explicitly enable Legion. This is native Discover installation, not npm publication or 1024Store acceptance. Version-specific verification is recorded separately in `PLAN.md`.
 
 启用可选官方市场后，用户自行添加可信索引 URL；连接器没有默认中央目录，也不自动添加索引。官方索引与社区目录 JSON 格式不能混用。
 
