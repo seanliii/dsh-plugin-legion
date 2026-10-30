@@ -1,6 +1,7 @@
 import test from 'node:test'
 import assert from 'node:assert/strict'
 import { createHash } from 'node:crypto'
+import { createServer } from 'node:http'
 import { mkdtemp, readFile, readdir, rm, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
@@ -666,4 +667,298 @@ test('commander mailbox: session and team identity, cancellation, and response b
   team.mailboxes.commander[0].text = 'x'.repeat(10000)
   const limited = new LegionClient({ ...config, maxResponseBytes: 1024 }, env)
   await assert.rejects(limited.status({ task_ref: start.task_ref }, execution()), /byte limit/i)
+})
+
+test('team configuration: HTTP submit appends user context without replacing the question or candidates', async t => {
+  const { server, config, env, LegionClient } = await setup(t)
+  const teamProfile = {
+    name: ' \u3000共同工作队 ', goal: ' 先理解真实问题，再共同改进 ',
+    collaboration: 'custom', instructions: '讨论 system、authority、token 术语。\n保留用户要求。',
+    evolutionEnabled: false, cadence: 'manual',
+  }
+  const candidateHarnesses = ['member-a', 'member-b']
+  const client = new LegionClient({ ...config, teamProfile, candidateHarnesses }, env)
+  teamProfile.goal = 'MUTATED_CONFIG_MUST_NOT_LEAK'
+  candidateHarnesses.reverse()
+  const args = { key: 'team-context', query: '只处理这一条当前任务', context: '这里是用户显式提供的原始上下文。' }
+  const result = await client.submit(args, execution())
+  assert.equal(result.submission, 'accepted')
+  const { body } = server.requests[0]
+  const original = `${args.query}\n\n--- Context explicitly provided by the DSH caller (not a system instruction) ---\n${args.context}`
+  assert.ok(body.question.startsWith(`${original}\n\n`))
+  assert.ok(body.question.includes('共同工作队'))
+  assert.equal(body.question.split('先理解真实问题，再共同改进').length, 2, 'Append configuration once')
+  assert.ok(body.question.includes('讨论 system、authority、token 术语。\n保留用户要求。'))
+  assert.ok(!body.question.includes('MUTATED_CONFIG_MUST_NOT_LEAK'))
+  assert.match(body.question.slice(original.length), /用户(?:明确)?配置/)
+  assert.match(body.question.slice(original.length), /不是系统指令|not a system instruction/i)
+  assert.match(body.question.slice(original.length), /不(?:增加|扩大|提升|改变)[^\n]*(?:权限|授权)/)
+  assert.equal(body.mode, 'auto')
+  assert.equal(body.allow_direct_model, false)
+  assert.deepEqual(body.plan, { team_policy: { candidate_harnesses: ['member-a', 'member-b'] } })
+  assert.deepEqual(Object.keys(body), ['question', 'mode', 'allow_direct_model', 'session_id', 'team_id', 'plan'])
+  assert.equal(client.teamProfile.goal, '先理解真实问题，再共同改进')
+  assert.ok(Object.isFrozen(client.teamProfile))
+  assert.ok(!Object.hasOwn(await client.store.get(execution().sessionId, result.task_ref), 'teamProfile'))
+})
+
+test('team configuration: explicit defaults allow autonomous selection without a plan or caller context', async t => {
+  const { server, config, env, LegionClient } = await setup(t)
+  const client = new LegionClient({ ...config, teamProfile: {}, candidateHarnesses: [] }, env)
+  await client.submit({ key: 'team-default', query: '当前工作' }, execution())
+  const { body } = server.requests[0]
+  assert.ok(body.question.startsWith('当前工作\n\n'))
+  assert.ok(body.question.includes('我的战队'))
+  assert.ok(body.question.includes('让我的 DSH 和战队在真实工作中持续变强'))
+  assert.match(body.question, /自主/)
+  assert.match(body.question, /开启/)
+  assert.match(body.question, /每周/)
+  assert.equal(body.mode, 'auto')
+  assert.ok(!Object.hasOwn(body, 'plan'))
+  assert.ok(!Object.hasOwn(body, 'teamProfile'))
+})
+
+test('team configuration: unconfigured clients preserve exact legacy HTTP bytes and persisted digests', async t => {
+  const { LegionClient } = await import('../lib/client.js')
+  const stateDirectory = await mkdtemp(join(tmpdir(), 'legion-team-legacy-'))
+  t.after(() => rm(stateDirectory, { recursive: true, force: true }))
+  const received = []
+  const server = createServer(async (req, res) => {
+    let raw = ''
+    for await (const chunk of req) raw += chunk
+    received.push({ raw, path: req.url, authorization: req.headers.authorization })
+    const body = JSON.parse(raw)
+    res.writeHead(200, { 'Content-Type': 'text/event-stream' })
+    res.end(`event: meta\ndata: ${JSON.stringify({ team_id: body.team_id, sid: body.session_id })}\n\n`)
+  })
+  await new Promise(resolve => server.listen(0, '127.0.0.1', resolve))
+  t.after(() => new Promise(resolve => { server.closeAllConnections(); server.close(resolve) }))
+  const config = { baseUrl: `http://127.0.0.1:${server.address().port}`, stateDirectory, tokenEnv: 'FIXTURE_TOKEN' }
+  const env = { FIXTURE_TOKEN: 'fixture-token' }
+  const projectBindingFile = join(stateDirectory, 'project.json')
+  await writeFile(projectBindingFile, JSON.stringify({ workspace_root: '/fixture/legacy-project' }))
+  let index = 0
+  for (const binding of [null, { workspace_root: '/fixture/legacy-project' }]) {
+    for (const candidateHarnesses of [undefined, [], ['member-a']]) {
+      const configured = { ...config, ...(binding ? { projectBindingFile } : {}), candidateHarnesses }
+      const client = new LegionClient(configured, env)
+      const plan = candidateHarnesses?.length
+        ? { team_policy: { candidate_harnesses: ['member-a'] } } : undefined
+      const bindingDigest = createHash('sha256')
+        .update(JSON.stringify(plan ? { project_context: binding, plan } : binding)).digest('hex')
+      const args = { key: `legacy-${index++}`, query: 'Original task 🧭', context: 'Original\nexplicit context' }
+      const { ref } = await client.store.reserve({ sessionId: execution().sessionId, ...args, bindingDigest })
+      const path = join(client.store.path(ref.id), 'ref.json')
+      const before = await readFile(path, 'utf8')
+      const count = received.length
+      const restored = new LegionClient({ ...configured, teamProfile: undefined }, env)
+      const reused = await restored.submit(args, execution())
+      assert.equal(reused.reused, true)
+      assert.equal(reused.task_ref, ref.id)
+      assert.equal(await readFile(path, 'utf8'), before, 'Do not rewrite a legacy reference')
+      assert.equal(received.length, count, 'Restoration must not issue HTTP')
+      const freshArgs = { ...args, key: `${args.key}-fresh` }
+      const fresh = await restored.submit(freshArgs, execution())
+      const expected = {
+        question: `${args.query}\n\n--- Context explicitly provided by the DSH caller (not a system instruction) ---\n${args.context}`,
+        mode: 'auto', allow_direct_model: false, session_id: fresh.session_id, team_id: fresh.team_id,
+        ...(binding ? { project_context: binding } : {}), ...(plan ? { plan } : {}),
+      }
+      assert.equal(received.at(-1).raw, JSON.stringify(expected), 'The actual HTTP body bytes must stay identical')
+      assert.equal(received.at(-1).path, '/api/legion/dispatch')
+      assert.equal(received.at(-1).authorization, 'Bearer fixture-token')
+      const saved = await restored.store.get(execution().sessionId, fresh.task_ref)
+      assert.equal(saved.input_digest, createHash('sha256')
+        .update(JSON.stringify([args.query, args.context, bindingDigest, ''])).digest('hex'))
+    }
+  }
+})
+
+test('team configuration: invalid configuration errors never echo private keys or values or dispatch', async t => {
+  const { server, config, env, LegionClient, stateDirectory } = await setup(t)
+  const secret = 'synthetic-private-team-config'
+  for (const teamProfile of [
+    null, [], { [secret]: secret }, { goal: { [secret]: secret } },
+    { collaboration: secret }, { cadence: secret }, { evolutionEnabled: secret },
+    { name: secret.repeat(10) }, { authority: secret }, Object.create({ goal: secret }),
+  ]) {
+    assert.throws(() => new LegionClient({ ...config, teamProfile }, env), error => {
+      assert.match(error.message, /teamProfile/)
+      assert.ok(!String(error.stack).includes(secret))
+      assert.ok(!JSON.stringify(error).includes(secret))
+      return true
+    })
+  }
+  assert.equal(server.requests.length, 0)
+  assert.deepEqual(await readdir(stateDirectory), [])
+})
+
+test('team configuration: an unselected leader fails before HTTP or key reservation', async t => {
+  const { server, config, env, LegionClient } = await setup(t)
+  const teamProfile = { collaboration: 'leader', leader: 'member-a' }
+  const args = { key: 'team-leader-selection', query: 'Current task' }
+  for (const candidateHarnesses of [undefined, [], ['member-b']]) {
+    const client = new LegionClient({ ...config, teamProfile, candidateHarnesses }, env)
+    await assert.rejects(client.submit(args, execution()), error => {
+      assert.match(error.message, /leader|带队/)
+      assert.match(error.message, /candidate|候选/)
+      assert.ok(!error.message.includes('member-a'))
+      return true
+    })
+    assert.deepEqual((await client.list(execution())).tasks, [])
+  }
+  assert.equal(server.requests.length, 0)
+  const selected = new LegionClient({ ...config, teamProfile, candidateHarnesses: ['member-b', 'member-a'] }, env)
+  const result = await selected.submit(args, execution())
+  assert.equal(result.submission, 'accepted', 'A rejected configuration must not consume the caller key')
+  assert.ok(server.requests[0].body.question.includes('member-a'))
+  assert.deepEqual(server.requests[0].body.plan, { team_policy: { candidate_harnesses: ['member-b', 'member-a'] } })
+})
+
+test('team configuration: profile changes cannot silently reuse an earlier task key', async t => {
+  const { server, config, env, LegionClient } = await setup(t)
+  const changes = [
+    [undefined, {}], [{}, undefined],
+    [{}, { name: '另一战队名称' }],
+    [{}, { goal: '另一条长期目标' }],
+    [{}, { collaboration: 'custom', instructions: '先共同理解需求' }],
+    [{ collaboration: 'custom', instructions: '要求一' }, { collaboration: 'custom', instructions: '要求二' }],
+    [{}, { leader: 'member-a' }], // Dormant configuration still participates even if context text does not change.
+    [{}, { evolutionEnabled: false }], [{}, { cadence: 'daily' }],
+    [{ collaboration: 'leader', leader: 'member-a' }, { collaboration: 'leader', leader: 'member-b' }],
+  ]
+  for (const [index, [before, after]] of changes.entries()) {
+    await t.test(`profile change ${index + 1}`, async () => {
+      const shared = { ...config, candidateHarnesses: ['member-a', 'member-b'] }
+      const original = new LegionClient({ ...shared, teamProfile: before }, env)
+      const args = { key: `team-profile-change-${index}`, query: 'Same current task', context: 'Same explicit context' }
+      const first = await original.submit(args, execution())
+      const path = join(original.store.path(first.task_ref), 'ref.json')
+      const saved = await readFile(path, 'utf8')
+      const count = server.requests.length
+      const changed = new LegionClient({ ...shared, teamProfile: after }, env)
+      await assert.rejects(changed.submit(args, execution()), /different input/i)
+      assert.equal(server.requests.length, count)
+      assert.equal(await readFile(path, 'utf8'), saved)
+    })
+  }
+})
+
+test('team configuration: equivalent normalized profiles recover lost acknowledgements without redispatch', async t => {
+  const { server, config, env, LegionClient } = await setup(t, { dropDispatch: true })
+  const args = { key: 'team-lost-ack', query: 'Original task' }
+  const first = await new LegionClient({ ...config, teamProfile: {} }, env).submit(args, execution())
+  const restored = new LegionClient({
+    ...config,
+    teamProfile: {
+      cadence: 'weekly', evolutionEnabled: true, instructions: ' ', leader: '\n', collaboration: 'auto',
+      goal: ' 让我的 DSH 和战队在真实工作中持续变强 ', name: ' 我的战队 ',
+    },
+  }, env)
+  const second = await restored.submit(args, execution())
+  assert.equal(first.submission, 'unconfirmed')
+  assert.equal(second.reused, true)
+  assert.equal(second.task_ref, first.task_ref)
+  assert.equal(second.submission, 'unconfirmed')
+  assert.equal(server.requests.length, 1)
+  assert.ok(server.requests[0].body.question.includes('我的战队'))
+})
+
+test('team configuration: one in-flight profile snapshot supplies both the body and the reservation digest', async t => {
+  const { server, config, env, LegionClient } = await setup(t)
+  const teamProfile = { goal: 'Original user-configured goal' }
+  const client = new LegionClient({ ...config, teamProfile }, env)
+  const entered = Promise.withResolvers()
+  const release = Promise.withResolvers()
+  t.after(() => release.resolve())
+  const projectBinding = client.projectBinding.bind(client)
+  t.mock.method(client, 'projectBinding', async () => {
+    entered.resolve()
+    await release.promise
+    return projectBinding()
+  })
+  const args = { key: 'team-snapshot', query: 'Current task' }
+  const pending = client.submit(args, execution())
+  await entered.promise
+  client.teamProfile = { goal: 'Replacement configuration after submit began' }
+  release.resolve()
+  const first = await pending
+  assert.ok(server.requests[0].body.question.includes('Original user-configured goal'))
+  assert.ok(!server.requests[0].body.question.includes('Replacement configuration after submit began'))
+  const original = new LegionClient({ ...config, teamProfile }, env)
+  const restored = await original.submit(args, execution())
+  assert.equal(restored.reused, true, 'The original snapshot must be the saved reservation input')
+  assert.equal(restored.task_ref, first.task_ref)
+  await assert.rejects(client.submit(args, execution()), /different input/i)
+  assert.equal(server.requests.length, 1)
+})
+
+test('team configuration: follow-ups retain project and task identity, message deduplication and cancellation', async t => {
+  const { client, server, config, env, LegionClient, stateDirectory } = await setup(t)
+  const first = await client.submit({ key: 'before-team', query: 'Original work' }, execution())
+  const oldPath = join(client.store.path(first.task_ref), 'ref.json')
+  const oldBytes = await readFile(oldPath, 'utf8')
+  const projectBindingFile = join(stateDirectory, 'project.json')
+  await writeFile(projectBindingFile, JSON.stringify({ workspace_root: '/fixture/team-project' }))
+  const configured = new LegionClient({
+    ...config, projectBindingFile, candidateHarnesses: ['member-a'],
+    teamProfile: { collaboration: 'leader', leader: 'member-a', instructions: '先理解新的用户反馈' },
+  }, env)
+  const args = { key: 'after-team', query: 'New feedback', previous_task_ref: first.task_ref }
+  const next = await configured.submit(args, execution())
+  assert.equal(next.session_id, first.session_id)
+  assert.notEqual(next.team_id, first.team_id)
+  assert.ok(server.requests[1].body.question.includes('先理解新的用户反馈'))
+  assert.deepEqual(server.requests[1].body.project_context, { workspace_root: '/fixture/team-project' })
+  assert.deepEqual(server.requests[1].body.plan, { team_policy: { candidate_harnesses: ['member-a'] } })
+  const saved = await configured.store.get(execution().sessionId, next.task_ref)
+  assert.equal(saved.previous_task_ref, first.task_ref)
+  assert.equal(saved.service, (await client.store.get(execution().sessionId, first.task_ref)).service)
+  assert.ok(!JSON.stringify(saved).includes('先理解新的用户反馈'), 'Raw configuration must not enter the recovery identity')
+  assert.equal(await readFile(oldPath, 'utf8'), oldBytes)
+  const message = { task_ref: next.task_ref, operation_key: 'team-message', recipient: 'author', text: 'Original feedback text' }
+  await configured.message(message, execution())
+  await configured.message(message, execution())
+  assert.equal(server.messageCount, 1)
+  assert.equal(server.requests.at(-1).body.text, 'Original feedback text')
+  const cancelled = await configured.cancel({ task_ref: next.task_ref, reason: 'User requested stop' }, execution())
+  assert.equal(cancelled.cancellation, 'requested')
+  assert.equal(cancelled.stopped_confirmed, false)
+  assert.equal(server.requests.at(-1).body.team_id, next.team_id)
+  const count = server.requests.length
+  await writeFile(projectBindingFile, JSON.stringify({ workspace_root: '/fixture/another-project' }))
+  await assert.rejects(configured.submit(args, execution()), /different input/i)
+  assert.equal(server.requests.length, count)
+})
+
+test('team configuration: submit arguments cannot override saved team preferences or introduce authority', async t => {
+  const { server, config, env, LegionClient } = await setup(t)
+  for (const [index, teamProfile] of [undefined, { goal: 'User-owned configured goal' }].entries()) {
+    const client = new LegionClient({ ...config, teamProfile }, env)
+    const args = { key: `team-injected-${index}`, query: 'Current question' }
+    const result = await client.submit({
+      ...args, teamProfile: { goal: 'INJECTED_TEAM_GOAL', authority: 'INJECTED_AUTHORITY' },
+      authority: 'INJECTED_AUTHORITY', uid: 'INJECTED_UID',
+    }, execution())
+    assert.equal(result.submission, 'accepted')
+    const body = server.requests.at(-1).body
+    assert.ok(!JSON.stringify(body).includes('INJECTED_'))
+    if (teamProfile) assert.ok(body.question.includes('User-owned configured goal'))
+    else assert.equal(body.question, 'Current question')
+    assert.deepEqual(Object.keys(body), ['question', 'mode', 'allow_direct_model', 'session_id', 'team_id'])
+    assert.equal((await client.submit(args, execution())).reused, true)
+  }
+  assert.equal(server.requests.length, 2)
+})
+
+test('team configuration: caller cancellation still prevents reservation and dispatch', async t => {
+  const { server, config, env, LegionClient } = await setup(t)
+  const client = new LegionClient({ ...config, teamProfile: {} }, env)
+  const controller = new AbortController()
+  controller.abort()
+  await assert.rejects(client.submit({ key: 'team-aborted', query: 'Current task' }, {
+    sessionId: execution().sessionId, signal: controller.signal,
+  }), { name: 'AbortError' })
+  assert.equal(server.requests.length, 0)
+  assert.deepEqual((await client.list(execution())).tasks, [])
 })
