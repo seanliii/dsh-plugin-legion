@@ -6,7 +6,7 @@
 
 **Edition 0.4.2 connects DSH to the separately installed, public core v0.1.0 technical preview.** The first-party core, selected auto-tools, packager and documentation are MIT; third-party licenses remain intact. The initial public source snapshot contains no private history. Post-release installation and runtime receipts belong on [GitHub main](https://github.com/seanliii/dsh-plugin-legion/blob/main/docs/PLAN.md#v042), not retroactively in frozen tag documentation.
 
-既有连接器 **0.4.1** 仍可按[固定标签](MARKET.md#v041)安装，[v0.4.1 Release](https://github.com/seanliii/dsh-plugin-legion/releases/tag/v0.4.1)已公开；其匿名固定提交新装、限定无核心 UI 与封包前检查分别保留在[版本记录](PLAN.md#v041)。PR #748 沿用且仍待维护者，官方 Discover 固定 Git 索引另行准备；不声称 npm 或 1024Store 已有一键入口。[0.4.0 历史记录](PLAN.md#v040)及其他旧回执保留原日期、版本和 hash，不作为 0.4.2 或新公开核心的安装、完整 UI 或执行证明。
+**0.4.2 已公开，固定 Git 索引也已发布并通过 DSH“发现”页真实安装。** 新 profile 已启用工作台、保存独立核心连接，页面刷新与双方服务重启后配置仍保留；具体范围见[版本记录](PLAN.md#v042)。社区目录 PR #748 的文件已更新，仍待维护者合入；这与原生 Discover 安装是两回事。未做 npm publish，也不声称 1024Store 已有安装按钮。[0.4.1](PLAN.md#v041)、[0.4.0](PLAN.md#v040)与旧核心记录保持原版本和 hash。
 
 ## 先回答最容易混淆的三个问题
 

@@ -4,11 +4,11 @@
 
 在 DSH 里找现成工具、读公开源码，按需安装你审查过的能力包。接好你有权使用的独立军团核心后，还能委托研究、协作、续作并下载正式成果。
 
-**连接器 0.4.2：** 在 DSH 内发现能力、协作并接收成果；军团核心另行安装。[公开核心 v0.1.0](https://github.com/seanliii/meyo-legion-core/releases/tag/v0.1.0) 已提供源码，第一方采用 MIT，第三方原许可保留，当前为**技术预览**。
+**连接器 0.4.2 已公开，并已从 DSH“发现”页实际安装、启用和连接核心。** [公开核心 v0.1.0](https://github.com/seanliii/meyo-legion-core/releases/tag/v0.1.0) 另行安装，第一方采用 MIT，第三方原许可保留，当前为**技术预览**。
 
 ## 立即开始
 
-1. 按[**0.4.2 Git 安装说明**](docs/MARKET.md#v042)安装，然后在 **DSH 原生插件页**明确启用 Legion；发布后的新装回执见下方 GitHub `main` 状态页。
+1. 用[**DSH“发现”页安装**](docs/MARKET.md#官方-discover-索引)，或按[固定 Git 命令](docs/MARKET.md#v042)安装，然后明确启用 Legion。两条路线都不要求本插件先发布到 npm。
 2. 打开侧栏 **军团**，选择 **当前工作会话**，进入 **找能力**。查工具、Skill 和公开 GitHub 不需要军团核心。
 3. 需要委托工作时，[下载并核对核心 v0.1.0](docs/CORE.md#public-core-install)，建立 Python 3.12 全新环境，再按 **`init` → `serve` → `dsh-config` → 插件保存连接**接入；实际派单前配置本人模型。核心不随连接器打包或启动。
 
@@ -63,7 +63,7 @@
 
 Host 插件在 **agent 沙箱之外运行**，启用前须信任实际代码与依赖。详见[安全说明](docs/SECURITY.md)。
 
-### 本版 Git 安装目标：v0.4.2
+### 固定版本 Git 安装：v0.4.2
 
 本版采用 Git，不做 npm 发布。`web` 是示例 profile，换成自己的名称，保留 `-w`：
 
@@ -71,7 +71,7 @@ Host 插件在 **agent 沙箱之外运行**，启用前须信任实际代码与�
 dsh plugin --profile web -w add 'github:seanliii/dsh-plugin-legion#v0.4.2'
 ```
 
-这是本版安装目标；标签可用状态、固定提交与发布后的新装回执请看 [GitHub main](https://github.com/seanliii/dsh-plugin-legion/blob/main/docs/PLAN.md#v042)，固定 tag 内的文档不会追加后验结果。[Discover 设置路径与社区目录状态](docs/MARKET.md#官方-discover-索引)另行说明，不与 Git 安装混算。
+`v0.4.2` 固定到 `7ca96434ee077102d2e2459173fffa91747898b5`。公开发行包、原生 Discover 新装、保存连接和重启恢复见 [0.4.2 验收记录](docs/PLAN.md#v042)。安装时保留了 pnpm 依赖兼容警告；本轮新实例没有配置模型，不将连接成功说成所有成员已能执行。
 
 ### 固定版本 Git 安装：v0.4.1
 

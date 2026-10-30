@@ -4,11 +4,11 @@ English | [简体中文](README.zh-CN.md)
 
 Find existing tools, read public source, and install capability bundles you have reviewed—all within DSH. Connect a separately installed Legion core you are authorized to use to delegate research, collaboration, revisions and formal file delivery.
 
-**Connector 0.4.2:** native capability discovery and collaboration, connected to the separately installed [public Legion core v0.1.0](https://github.com/seanliii/meyo-legion-core/releases/tag/v0.1.0). The core is an MIT first-party source release marked as a **technical preview**; third-party licenses are retained.
+**Connector 0.4.2 is public and has been installed, enabled and connected through the native DSH UI.** The [public Legion core v0.1.0](https://github.com/seanliii/meyo-legion-core/releases/tag/v0.1.0) is installed separately. Its first-party source is MIT, it remains a **technical preview**, and third-party licenses are retained.
 
 ## Get started
 
-1. Follow the [**0.4.2 Git installation guide**](docs/MARKET.md#v042), then explicitly enable Legion in **DSH Plugins**. Post-release installation receipts are recorded on GitHub `main`, linked below.
+1. Install through [**DSH Discover**](docs/MARKET.md#官方-discover-索引) or the [fixed Git command](docs/MARKET.md#v042), then explicitly enable Legion. Neither route requires publishing this connector to npm.
 2. Open **Legion** in the sidebar, choose a **Working session**, and start with **Discover**. Searching tools, Skills and public GitHub needs no Legion core.
 3. For delegated work, [download and verify core v0.1.0](docs/CORE.md#public-core-install), create a fresh Python 3.12 environment, then follow **`init` → `serve` → `dsh-config` → Save connection**. Configure your own model before submitting work; the connector does not bundle or start the core.
 
@@ -63,7 +63,7 @@ This is a parameter template, not a published package address. For public pinned
 
 Host plugins run **outside the agent sandbox**. Review code and dependencies before trusting them; see [Security](docs/SECURITY.md).
 
-### Git installation target — v0.4.2
+### Fixed-version Git installation — v0.4.2
 
 This edition uses Git, not npm publication. Replace the example `web` profile as needed and retain `-w`:
 
@@ -71,7 +71,7 @@ This edition uses Git, not npm publication. Replace the example `web` profile as
 dsh plugin --profile web -w add 'github:seanliii/dsh-plugin-legion#v0.4.2'
 ```
 
-This is the release's installation target. Check [GitHub main for tag availability, the fixed commit and post-release installation receipts](https://github.com/seanliii/dsh-plugin-legion/blob/main/docs/PLAN.md#v042); frozen tag documentation does not acquire later acceptance results. The [Discover setup route and catalog status](docs/MARKET.md#官方-discover-索引) are separate from Git installation.
+`v0.4.2` is pinned to `7ca96434ee077102d2e2459173fffa91747898b5`. The public package, native Discover installation, saved connection and restart recovery are recorded in [0.4.2 acceptance](docs/PLAN.md#v042). Installation retained a pnpm peer-dependency warning. No model was configured in this fresh instance; a working connection does not certify member execution.
 
 ### Fixed-version Git installation — v0.4.1
 
