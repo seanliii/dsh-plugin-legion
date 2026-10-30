@@ -5,11 +5,17 @@ import { createContext, runInContext } from 'node:vm'
 import { webcrypto } from 'node:crypto'
 import { executeWorkbenchCommand } from '../lib/workbench.js'
 
+function memoryStorage() {
+  const values = new Map()
+  return { getItem: key => values.get(key) ?? null, setItem: (key, value) => values.set(key, String(value)),
+    removeItem: key => values.delete(key) }
+}
+
 async function helpers() {
   let definition
   const realm = createContext({
-    window: { __ModuleLoader__: { load(value) { definition = value } } },
-    URL, AbortController, DOMException, console, crypto: webcrypto,
+    window: { localStorage: memoryStorage(), __ModuleLoader__: { load(value) { definition = value } } },
+    URL, AbortController, DOMException, TextEncoder, console, crypto: webcrypto,
   })
   runInContext(await readFile(new URL('../client/index.js', import.meta.url), 'utf8'), realm)
   const plugin = definition.factory(() => assert.fail('Pure helpers do not import another browser plugin'))
@@ -920,7 +926,7 @@ test('downloads reuse the native human command with an observed id, never a retu
 // In-process projection, not browser acceptance. Keep React child slots/keys
 // and model the native disabled/removal focus loss observed on DSH 50935.
 async function statusPanel(t, status, { taskCount = 1, reducedMotion = false, membersError,
-  locale = 'zh', readTask = true } = {}) {
+  locale = 'zh', readTask = true, memberRows = [], modelCatalog, configValue, flow } = {}) {
   let definition, Page, cursor = 0
   const label = (zh, en) => locale === 'zh' ? zh : en
   const slots = [], cleanups = [], calls = [], effects = [], focusCalls = [], scrollCalls = []
@@ -961,12 +967,13 @@ async function statusPanel(t, status, { taskCount = 1, reducedMotion = false, me
   }
   const realm = createContext({ window: {
     __ModuleLoader__: { load(value) { definition = value } },
+    localStorage: memoryStorage(),
     matchMedia(query) {
       assert.equal(query, '(prefers-reduced-motion: reduce)')
       return { matches: reducedMotion }
     },
   },
-    URL, AbortController, DOMException, console, crypto: webcrypto })
+    URL, AbortController, DOMException, TextEncoder, console, crypto: webcrypto })
   runInContext(await readFile(new URL('../client/index.js', import.meta.url), 'utf8'), realm)
   const plugin = definition.factory(name => {
     assert.equal(name, 'react')
@@ -980,21 +987,36 @@ async function statusPanel(t, status, { taskCount = 1, reducedMotion = false, me
       }
       const { action, args } = JSON.parse(line.slice('/legion-panel '.length))
       if (action === 'runtime' && membersError) throw new Error(membersError)
+      if (action.startsWith('flow_')) return reply(action, typeof flow === 'function' ? await flow(id, action, args) : flow)
       return reply(action, action === 'status' ? typeof status === 'function' ? await status(id, args) : status
         : action === 'tasks' ? { tasks: Array.from({ length: taskCount }, (_, index) => ({
           task_ref: index ? index.toString(16).padStart(32, '0') : STATUS_REF, key: `synthetic-task-${index}`,
         })) }
-          : { runtime: { harnesses: [] } })
+          : { runtime: { harnesses: memberRows } })
     }),
     locale: { resolveText(value) { return value[locale] } },
     layout: { selectPanel() {} },
     on() {},
     effect(work) { cleanups.push(work()) },
-    inject(dependencies, callback) { if (dependencies[0] === 'slots') callback(ctx) },
+    inject(dependencies, callback) {
+      if (dependencies[0] === 'slots' || (modelCatalog && dependencies[0] === 'remote.session')
+        || (configValue !== undefined && dependencies[0] === 'configForms')) callback(ctx)
+    },
     slots: {
       inject(_slot, callback) { callback() },
       register(options, component) { if (options.key === 'legion') Page = component },
     },
+  }
+  if (modelCatalog) ctx.remote.session = { modelCatalog: async () => nativeReply(modelCatalog) }
+  if (configValue !== undefined) {
+    const config = mappedConfiguration()
+    config.form.getSnapshot = () => ({ status: 'ready', writable: true, revision: 7, value: configValue })
+    ctx.configForms = config.owner.forms
+    ctx.remote.pluginInventory = config.owner.inventory
+    ctx.remote.pluginManager = config.owner.manager
+    ctx.remote.settings = { async describe() {
+      return nativeReply({ writable: true, namespaces: [{ ns: config.identity.namespace, value: configValue, revision: 7 }] })
+    } }
   }
   ctx.sessions.refresh = async () => {}
   plugin.apply(ctx)
@@ -1108,6 +1130,105 @@ async function projectArtifactRecords(artifacts, after = 0) {
   assert.equal(result.kind, 'success')
   return JSON.parse(result.text).value
 }
+
+test('team entry offers companions, collaboration and automatic growth without a second activation ceremony', async t => {
+  const panel = await statusPanel(t, {}, { readTask: false })
+  assert.ok(panel.text(panel.render()).includes('选择谁与你并肩作战'))
+  assert.ok(panel.text(panel.render()).includes('DSH · 你的主场'))
+  panel.find('button', '下一步：协作方式').props.onClick()
+  const collaboration = panel.text(panel.render())
+  assert.ok(collaboration.includes('自主组织'))
+  assert.ok(collaboration.includes('指定带队者'))
+  assert.ok(collaboration.includes('我的协作要求'))
+  panel.find('button', '下一步：自动变强').props.onClick()
+  const evolution = panel.render()
+  const toggle = panel.nodes(evolution).find(node => node.type === 'input' && node.props.type === 'checkbox')
+  assert.equal(toggle.props.checked, true, 'Improvement is on by default for first setup')
+  assert.ok(panel.find('button', '组建战队并自动开工'))
+  assert.ok(panel.text(evolution).includes('每周'))
+  assert.ok(!panel.text(evolution).includes('是否开启进化'))
+})
+
+test('native remote.session model availability is actually wired to the setup page', async t => {
+  const panel = await statusPanel(t, {}, { readTask: false, modelCatalog: {
+    default: { provider: 'missing', model: 'missing' }, groups: [], failures: [],
+  } })
+  panel.find('button', '3 · 自动变强').props.onClick()
+  await turn()
+  assert.ok(panel.text(panel.render()).includes('当前会话还没有可用模型'))
+})
+
+test('team setup presents execution companions, not retired engines as selectable teammates', async t => {
+  const panel = await statusPanel(t, {}, { readTask: false, memberRows: [
+    { key: 'retired-source', display_name: 'Retired engine', entry_points: { execution: { selectable: false } } },
+    { key: 'actual-companion', display_name: 'Companion', entry_points: { execution: { selectable: true } } },
+  ] })
+  const inputs = panel.nodes(panel.render()).filter(node => node.type === 'input' && node.props.type === 'checkbox')
+  assert.deepEqual(inputs.map(node => node.props['aria-label']), ['选择成员 Companion'])
+  assert.ok(panel.text(panel.render()).includes('工具来源'))
+})
+
+const flowProfile = {
+  name: '默认战队', goal: '当前默认目标', collaboration: 'auto', leader: '', instructions: '',
+  evolutionEnabled: false, cadence: 'weekly',
+}
+async function settleFlowPanel(panel) {
+  for (let i = 0; i < 5; i++) { panel.render(); await turn() }
+}
+
+test('flow snapshots: global defaults never label an older session plan as having improvement switched off', async t => {
+  const calls = []
+  let matches = false
+  const panel = await statusPanel(t, {}, { readTask: false, configValue: { teamProfile: flowProfile }, flow: async (id, action) => {
+    calls.push({ id, action })
+    if (action === 'flow_start') matches = true
+    return { code: 'ok', catalogVerified: true, configured: true, enabled: true,
+      workflow: { initialObserved: true, recurringActive: true, configurationMatches: matches },
+      schedules: [{ id: 'old-plan', title: '旧计划', role: 'recurring', status: 'active', matchesConfiguration: matches }],
+      observations: [] }
+  } })
+  await settleFlowPanel(panel)
+  const content = panel.text(panel.render())
+  assert.match(content, /默认.*自主改进.*关闭/)
+  assert.doesNotMatch(content, /自主改进已关闭/)
+  assert.match(content, /当前会话.*旧配置|当前会话.*未同步/)
+  assert.match(content, /只(?:会)?更新当前|仅.*当前.*会话/)
+  assert.match(content, /其他会话/)
+  const sync = panel.nodes(panel.render()).find(node => node.type === 'button' && /同步当前会话计划/.test(panel.text(node)))
+  assert.ok(sync, 'Use the existing flow_start route for an explicit current-session sync')
+  sync.props.onClick()
+  await settleFlowPanel(panel)
+  assert.deepEqual(calls.filter(row => row.action === 'flow_start'), [{ id: 'a', action: 'flow_start' }])
+  assert.doesNotMatch(panel.text(panel.render()), /当前会话仍使用旧配置/)
+})
+
+test('flow snapshots: weekly defaults with only an initial schedule explicitly report the missing recurring plan', async t => {
+  const panel = await statusPanel(t, {}, { readTask: false, configValue: { teamProfile: { ...flowProfile, evolutionEnabled: true } }, flow: {
+    code: 'ok', catalogVerified: true, configured: true, enabled: true, partial: false,
+    workflow: { initialObserved: true, recurringActive: false, configurationMatches: true },
+    schedules: [{ id: 'initial-only', role: 'initial', status: 'active', matchesConfiguration: true }], observations: [],
+  } })
+  await settleFlowPanel(panel)
+  const content = panel.text(panel.render())
+  assert.ok(content.includes('首次已安排，未观察到周期任务'))
+  assert.ok(!content.includes('自动工作已安排'))
+})
+
+test('flow snapshots: an active old plan remains pausable when teamProfile is not configured', async t => {
+  const panel = await statusPanel(t, {}, { readTask: false, configValue: {}, flow: {
+    code: 'ok', catalogVerified: true, configured: false, enabled: true,
+    workflow: { initialObserved: true, recurringActive: true, configurationMatches: null },
+    schedules: [{ id: 'old-active', role: 'recurring', status: 'active', matchesConfiguration: null }], observations: [],
+  } })
+  await settleFlowPanel(panel)
+  const pause = panel.find('button', '暂停后续自动工作')
+  assert.ok(pause, 'Missing global defaults must not hide existing native schedules or the pause action')
+  assert.equal(pause.props.disabled, false)
+  assert.match(panel.text(panel.render()), /默认.*(?:未配置|尚未设置)/)
+  pause.props.onClick()
+  await settleFlowPanel(panel)
+  assert.equal(panel.calls.filter(call => call.line.includes('"action":"flow_pause"')).length, 1)
+})
 
 for (const example of [
   { locale: 'zh', count: '本次已观察到的成果记录：4', saved: '已保存的交付版本',

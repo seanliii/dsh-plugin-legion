@@ -36,6 +36,34 @@ window.__ModuleLoader__.load({
     const bool = value => typeof value === 'boolean' ? value : null
     const own = (value, key) => Object.prototype.hasOwnProperty.call(value, key)
     const record = value => value !== null && typeof value === 'object' && !Array.isArray(value)
+    const teamDefaults = () => ({
+      name: '我的战队', goal: '让我的 DSH 和战队在真实工作中持续变强',
+      collaboration: 'auto', leader: '', instructions: '', evolutionEnabled: true, cadence: 'weekly',
+    })
+    const pendingStorageKey = 'dsh-legion.pending-operations.v1'
+    const validRunKey = key => typeof key === 'string' && key.length > 0 && key.length <= 128
+      && key === key.trim() && key.isWellFormed() && !/[\u0000-\u001f\u007f]/u.test(key)
+    const canonical = value => Array.isArray(value) ? value.map(canonical)
+      : record(value) ? Object.fromEntries(Object.keys(value).sort().filter(key => value[key] !== undefined)
+        .map(key => [key, canonical(value[key])])) : value
+    const configText = value => {
+      const result = { ...value, candidateHarnesses: value?.candidateHarnesses ?? [] }
+      if (record(result.teamProfile)) {
+        result.teamProfile = { ...teamDefaults(), ...result.teamProfile }
+        for (const key of ['name', 'goal', 'leader', 'instructions']) {
+          if (typeof result.teamProfile[key] === 'string') result.teamProfile[key] = result.teamProfile[key].trim()
+        }
+      }
+      return JSON.stringify(canonical(result))
+    }
+    const hashText = async value => Array.from(new Uint8Array(
+      await crypto.subtle.digest('SHA-256', new TextEncoder().encode(value)),
+    ), byte => byte.toString(16).padStart(2, '0')).join('')
+    const sameNote = (a, b) => JSON.stringify(canonical(a)) === JSON.stringify(canonical(b))
+    const sameOwner = (a, b) => a.sessionId === b.sessionId && a.entryId === b.entryId && a.namespace === b.namespace
+    const sameConnection = (a, b) => sameOwner(a, b) && a.connectionHash === b.connectionHash
+    const storageFault = () => new Error('浏览器持久存储不可用或恢复便条无效；不能安全保存／清理操作身份。请先恢复浏览器存储再核对原操作，不要换 key 重发。 / Persistent recovery storage is unavailable.')
+    const mismatchFault = () => new Error('有待完成操作，但会话、配置归属、连接或已读回配置不匹配；仅保留便条，不自动派发。请切回原会话和连接核对。 / Pending operation does not match the current configuration.')
 
     function artifactFacts(value) {
       const available = Array.isArray(value?.artifacts)
@@ -100,7 +128,7 @@ window.__ModuleLoader__.load({
 
     function configOperations(draft) {
       const operations = []
-      for (const key of ['baseUrl', 'tokenEnv', 'tokenFile', 'candidateHarnesses']) {
+      for (const key of ['baseUrl', 'tokenEnv', 'tokenFile', 'candidateHarnesses', 'teamProfile']) {
         if (!own(draft, key)) continue
         let value = draft[key]
         if (key === 'candidateHarnesses') {
@@ -108,6 +136,10 @@ window.__ModuleLoader__.load({
             throw new Error('成员选择必须是有效的名称列表 / Invalid member selection')
           }
           value = [...new Set(value)]
+        } else if (key === 'teamProfile') {
+          if (!record(value)) throw new Error('战队配置必须是对象 / Invalid team configuration')
+          // Host Config remains the authority for fields, defaults and validation.
+          value = { ...value }
         } else {
           if (typeof value !== 'string') throw new Error('配置必须为文字 / Invalid configuration')
           value = value.trim()
@@ -141,7 +173,7 @@ window.__ModuleLoader__.load({
 
     // This controller owns UI state only. The host owns configuration, installs,
     // task identity, permissions and execution. Late results are session-fenced.
-    function createController(ctx) {
+    function createController(ctx, options = {}) {
       let disposed = false
       let epoch = 0
       let form
@@ -153,13 +185,17 @@ window.__ModuleLoader__.load({
       const sequences = new Map()
       const operations = new Map()
       const submissions = new Map()
-      const sessionKeys = new Set(['members', 'search', 'source', 'tasks', 'taskStatus', 'submit', 'download'])
+      const flowMutations = new Map()
+      const flowWrites = ['flowStart', 'flowPause', 'flowRun']
+      const sessionKeys = new Set(['members', 'search', 'source', 'tasks', 'taskStatus', 'submit', 'download',
+        'flowStatus', ...flowWrites, 'flowRecovery', 'flowOpen', 'teamSetup', 'modelStatus'])
       let state = {
         sessionId: '', sessions: ctx.sessions.list.getSnapshot(),
         available: {}, busy: {}, errors: {}, members: null, search: null, source: null,
         packages: null, plugins: null, config: null, configEntry: null, configNamespace: null, configSaved: false,
         inspection: null, installResult: null, installId: null, installUncertain: false, installCancellation: null,
         tasks: null, taskStatus: null, taskStatusStale: false, download: null, operation: null, submission: null,
+        flow: null, flowStale: false, flowRunKey: null, modelStatus: null,
       }
       const publish = patch => {
         if (disposed) return
@@ -188,7 +224,131 @@ window.__ModuleLoader__.load({
           || ['baseUrl', 'tokenEnv', 'tokenFile'].some(key => config?.value?.[key] !== state.config?.value?.[key])) {
           clearTaskView()
         }
+        if (entryId !== state.configEntry || namespace !== state.configNamespace
+          || configText(config?.value) !== configText(state.config?.value)) {
+          invalidate(['flowStatus'], { flow: null, flowStale: false, flowRunKey: null })
+        }
         return config
+      }
+      // These are recovery notes for explicit user actions, not schedules. The
+      // Host catalog remains authoritative; neither prompts nor config values
+      // or credentials are written to browser storage.
+      const pendingStorage = () => {
+        try {
+          const storage = own(options, 'storage') ? options.storage : window.localStorage
+          if (!storage || ['getItem', 'setItem', 'removeItem'].some(key => typeof storage[key] !== 'function')) throw storageFault()
+          return storage
+        } catch { throw storageFault() }
+      }
+      const readNotes = () => {
+        try {
+          const text = pendingStorage().getItem(pendingStorageKey)
+          if (text === null) return []
+          if (typeof text !== 'string' || text.length > 32768) throw storageFault()
+          const saved = JSON.parse(text)
+          const fields = ['action', 'sessionId', 'entryId', 'namespace', 'configurationHash', 'connectionHash', 'runKey']
+          if (!record(saved) || saved.version !== 1 || Object.keys(saved).some(key => !['version', 'operations'].includes(key))
+            || !Array.isArray(saved.operations) || saved.operations.length > 16 || saved.operations.some(note =>
+              !record(note) || Object.keys(note).some(key => !fields.includes(key))
+              || !['flow_start', 'flow_run'].includes(note.action)
+              || ['sessionId', 'entryId', 'namespace'].some(key => typeof note[key] !== 'string'
+                || !note[key].trim() || note[key].length > 1024 || !note[key].isWellFormed())
+              || ['configurationHash', 'connectionHash'].some(key => typeof note[key] !== 'string' || !/^[a-f0-9]{64}$/u.test(note[key]))
+              || (note.action === 'flow_run' ? !validRunKey(note.runKey) : own(note, 'runKey')))) throw storageFault()
+          return saved.operations
+        } catch { throw storageFault() }
+      }
+      async function editNotes(edit) {
+        const work = () => {
+          const before = readNotes()
+          const { notes, value } = edit(before)
+          if (sameNote(notes, before)) return value
+          const text = JSON.stringify({ version: 1, operations: notes })
+          if (notes.length > 16 || text.length > 32768) {
+            throw new Error('待确认操作便条已满；请先核对原会话，不能覆盖旧身份。 / Resolve pending operations before adding another.')
+          }
+          try {
+            const storage = pendingStorage()
+            if (notes.length) storage.setItem(pendingStorageKey, text)
+            else storage.removeItem(pendingStorageKey)
+            if (storage.getItem(pendingStorageKey) !== (notes.length ? text : null)) throw storageFault()
+          } catch { throw storageFault() }
+          return value
+        }
+        // Browser-native locking only covers the small synchronous note update.
+        // A second tab reuses the published run key; no lock owns model work.
+        return typeof navigator !== 'undefined' && navigator.locks?.request
+          ? navigator.locks.request(pendingStorageKey, work) : work()
+      }
+      const forgetNote = note => editNotes(notes => ({ notes: notes.filter(row => !sameNote(row, note)) }))
+      const captureConfig = () => {
+        if (!state.sessionId || state.config?.status !== 'ready' || !record(state.config.value)
+          || !state.configEntry || !state.configNamespace || !services.configuration) {
+          throw new Error('请先选择会话并读回原生配置，再开始或恢复操作。 / Read the native configuration first.')
+        }
+        return { sessionId: state.sessionId, entryId: state.configEntry, namespace: state.configNamespace,
+          owner: services.configuration, epoch, text: configText(state.config.value) }
+      }
+      const scopeCurrent = view => !disposed && epoch === view.epoch && state.sessionId === view.sessionId
+        && state.configEntry === view.entryId && state.configNamespace === view.namespace
+        && services.configuration === view.owner
+      const viewCurrent = view => scopeCurrent(view) && state.config?.status === 'ready'
+        && configText(state.config.value) === view.text
+      async function fingerprint(view, text = view.text) {
+        const { teamProfile, candidateHarnesses, ...connection } = JSON.parse(text)
+        const [configurationHash, connectionHash] = await Promise.all([hashText(text), hashText(JSON.stringify(canonical(connection)))])
+        return { sessionId: view.sessionId, entryId: view.entryId, namespace: view.namespace, configurationHash, connectionHash }
+      }
+      async function readBackConfig(view) {
+        if (!scopeCurrent(view)) return
+        if (typeof view.owner.settings?.describe !== 'function') {
+          throw new Error('缺少原生配置的新鲜读回能力；恢复便条已保留，暂不自动开工。 / A fresh native settings read is required.')
+        }
+        const document = remoteValue(await view.owner.settings.describe())
+        if (!record(document) || !Array.isArray(document.namespaces) || typeof document.writable !== 'boolean') throw mismatchFault()
+        const identity = await readConfigIdentity(view.owner, document.namespaces)
+        if (!scopeCurrent(view)) return
+        if (!identity || identity.entryId !== view.entryId || identity.namespace !== view.namespace) throw mismatchFault()
+        const sections = rows(document?.namespaces).filter(section => section.ns === view.namespace)
+        const mirror = view.owner.forms.describe()
+        if (sections.length !== 1 || typeof mirror.acceptView !== 'function'
+          || !Number.isSafeInteger(sections[0].revision)
+          || sections[0].revision < (form?.getSnapshot()?.revision ?? 0)) throw mismatchFault()
+        mirror.acceptView(sections[0])
+        const snapshot = form?.getSnapshot()
+        if (snapshot?.status !== 'ready') throw mismatchFault()
+        // acceptView folds only the namespace. Document-wide facts still belong
+        // to this fresh response, not the mirror's previously cached document.
+        publish({ config: observeConfig({ ...snapshot, writable: document.writable,
+          ...(typeof document.hasDocument === 'boolean' ? { hasDocument: document.hasDocument } : {}) }) })
+        return captureConfig()
+      }
+      async function remember(view, action, key, text = view.text) {
+        const identity = await fingerprint(view, text)
+        if (!viewCurrent(view)) return
+        return editNotes(notes => {
+          const previous = notes.find(note => note.action === action && sameConnection(note, identity))
+          if (action === 'flow_run' && previous
+            && (previous.configurationHash !== identity.configurationHash || (key && previous.runKey !== key))) {
+            throw new Error('上次开工尚未确认或配置已经变化；请核对原操作，不能换 key 补发。 / Resolve the original run first.')
+          }
+          const note = { action, ...identity, ...(action === 'flow_run' ? { runKey: previous?.runKey || key || crypto.randomUUID() } : {}) }
+          return { notes: [...notes.filter(row => row !== previous), note], value: note }
+        })
+      }
+      const flowSettled = outcome => outcome?.code === 'ok' && outcome.catalogVerified === true
+        && outcome.partial !== true && outcome.cancelled !== true
+      async function executeNote(note, view) {
+        if (!viewCurrent(view)) return
+        if (!readNotes().some(row => sameNote(row, note))) return // A pause or newer explicit setup withdrew it.
+        if (note.action === 'flow_run') publish({ flowRunKey: note.runKey })
+        const outcome = await command(view.sessionId, note.action, note.action === 'flow_run' ? { key: note.runKey } : {})
+        if (viewCurrent(view)) publish({ flow: outcome, flowStale: false })
+        if (flowSettled(outcome)) {
+          await forgetNote(note)
+          if (viewCurrent(view) && note.action === 'flow_run') publish({ flowRunKey: null })
+        }
+        return viewCurrent(view) ? outcome : undefined
       }
       async function run(key, work, scoped = false) {
         if (disposed || state.busy[key]) return false
@@ -237,22 +397,84 @@ window.__ModuleLoader__.load({
           return body.value
         })
       }
+      async function writeFlow(key, action, args = {}, setup) {
+        const id = state.sessionId
+        if (flowMutations.has(id)) return false
+        const mutation = {}
+        flowMutations.set(id, mutation)
+        invalidate(['flowStatus'], { flowStale: state.flow !== null })
+        try {
+          let outcome
+          const received = await run(key, async sessionId => {
+            let view = captureConfig()
+            if (action === 'flow_pause') {
+              const identity = await fingerprint(view)
+              if (!viewCurrent(view)) return
+              await editNotes(notes => ({ notes: notes.filter(note => !sameConnection(note, identity)) }))
+              if (!viewCurrent(view)) return
+              publish({ flowRunKey: null })
+              outcome = await command(sessionId, action)
+            } else {
+              if (action === 'flow_run' && args.key !== undefined && !validRunKey(args.key)) {
+                throw new Error('开工 key 必须是 1–128 个有效字符，不能有首尾空白或控制字符。 / Invalid run key.')
+              }
+              let expected = view.text
+              if (setup) {
+                if (setup.entryId !== view.entryId || setup.namespace !== view.namespace) throw mismatchFault()
+                if (!state.config.writable || !Number.isSafeInteger(setup.revision)) {
+                  throw new Error('当前配置不可编辑 / Configuration is not writable')
+                }
+                const value = JSON.parse(view.text)
+                for (const op of configOperations(setup.draft)) {
+                  if (op.op === 'set') value[op.path[0]] = op.value
+                  else delete value[op.path[0]]
+                }
+                expected = configText(value)
+              }
+              const note = await remember(view, action, args.key, expected)
+              if (!note || !scopeCurrent(view)) return
+              if (setup) {
+                let refused = false
+                const accepted = await controller.saveConfig(setup.draft, setup.revision, setup.entryId, setup.namespace, async () => {
+                  refused = true
+                  await forgetNote(note)
+                })
+                if (refused || !scopeCurrent(view)) return
+                if (!accepted || configText(state.config?.value) !== expected) view = await readBackConfig(view)
+                else view = captureConfig()
+                if (!view) return
+                const confirmed = await fingerprint(view)
+                if (!sameConnection(note, confirmed) || note.configurationHash !== confirmed.configurationHash) throw mismatchFault()
+                if (!viewCurrent(view)) return
+                publish({ configSaved: true })
+              }
+              outcome = await executeNote(note, view)
+            }
+            return outcome && viewCurrent(view) ? { flow: outcome, flowStale: false } : undefined
+          }, true)
+          // A successful command envelope can contain a partial native write.
+          // Display those facts, but do not settle the operation or forget its key.
+          return received && flowSettled(outcome)
+        } finally {
+          if (flowMutations.get(id) === mutation) flowMutations.delete(id)
+        }
+      }
       const service = key => {
         if (!services[key]) throw new Error(`DSH 未提供此原生服务 / Native service unavailable: ${key}`)
         return services[key]
       }
-      async function readConfigIdentity(owner) {
+      async function readConfigIdentity(owner, freshNamespaces) {
         const current = () => !disposed && services.configuration === owner
-        const mirror = owner.forms.describe()
-        await mirror.ensure()
+        const mirror = freshNamespaces === undefined ? owner.forms.describe() : undefined
+        await mirror?.ensure()
         if (!current()) return
         const entries = remoteValue(await owner.inventory.list()).entries
         if (!current()) return
         const bundles = owner.manager ? remoteValue(await owner.manager.listBundles()) : []
         if (!current()) return
-        const snapshot = mirror.getSnapshot()
-        if (!snapshot.view || snapshot.error) throw new Error(snapshot.error || 'DSH 配置暂不可读 / Settings unavailable')
-        const identity = configEntry(entries, snapshot.view.namespaces, bundles)
+        const snapshot = mirror?.getSnapshot()
+        if (mirror && (!snapshot.view || snapshot.error)) throw new Error(snapshot.error || 'DSH 配置暂不可读 / Settings unavailable')
+        const identity = configEntry(entries, freshNamespaces ?? snapshot.view.namespaces, bundles)
         if (!identity) throw new Error('未找到唯一军团配置，请在 DSH 插件页检查重复实例 / No unique Legion entry')
         return identity
       }
@@ -306,7 +528,8 @@ window.__ModuleLoader__.load({
             errors[key] = null
           }
           publish({ sessionId, busy, errors, members: null, search: null, source: null, tasks: null,
-            taskStatus: null, taskStatusStale: false, download: null, operation: operations.get(sessionId) || null, submission: submissions.get(sessionId) || null })
+            taskStatus: null, taskStatusStale: false, download: null, operation: operations.get(sessionId) || null, submission: submissions.get(sessionId) || null,
+            flow: null, flowStale: false, flowRunKey: null, modelStatus: null })
         },
         async refreshSessions() {
           await run('sessions', async () => {
@@ -317,6 +540,72 @@ window.__ModuleLoader__.load({
         loadMembers() {
           return run('members', async id => ({ members: await command(id, 'runtime', { view: 'members' }) }), true)
         },
+        async loadFlow() {
+          if (flowMutations.has(state.sessionId)) return Promise.resolve(false)
+          publish({ flowStale: state.flow !== null })
+          const received = await run('flowStatus', async id => ({
+            flow: await command(id, 'flow_status'), flowStale: false,
+          }), true)
+          if (received) await controller.recoverPendingFlow()
+          return received
+        },
+        openFlowSession() {
+          return run('flowOpen', async id => {
+            service('navigation').openSession(id)
+            return {}
+          }, true)
+        },
+        loadModelStatus() {
+          return run('modelStatus', async id => ctx.sessions.using(id, { source: 'controllerOperation' }, async reference => {
+            const binding = await reference.ready
+            const catalog = remoteValue(await service('models').modelCatalog())
+            const snapshot = binding?.session?.getSnapshot()
+            const selection = binding?.session?.projections?.faceOf('modelSelection').getSnapshot()?.next ?? catalog.default
+            const available = typeof selection?.provider === 'string' && typeof selection?.model === 'string'
+              && rows(catalog.groups).some(group => group.id === selection.provider
+                && rows(group.models).some(model => model.id === selection.model))
+            return { modelStatus: {
+              available, provider: selection?.provider ? errorText(selection.provider) : null,
+              model: selection?.model ? errorText(selection.model) : null,
+              running: bool(snapshot?.running), lastError: snapshot?.lastAgentError ? errorText(snapshot.lastAgentError) : null,
+              failures: rows(catalog.failures).map(failure => errorText(failure.message)),
+              execution: 'not_verified',
+            } }
+          }), true)
+        },
+        startFlow() { return writeFlow('flowStart', 'flow_start') },
+        pauseFlow() { return writeFlow('flowPause', 'flow_pause') },
+        runFlow(key) { return writeFlow('flowRun', 'flow_run', { key }) },
+        saveAndStartTeam(draft, revision, entryId, namespace = entryId) {
+          return writeFlow('teamSetup', 'flow_start', {}, { draft, revision, entryId, namespace })
+        },
+        async recoverPendingFlow() {
+          const id = state.sessionId
+          if (!id || disposed || state.config?.status !== 'ready' || flowMutations.has(id)) return false
+          const mutation = {}
+          flowMutations.set(id, mutation)
+          try {
+            return await run('flowRecovery', async () => {
+              const notes = readNotes()
+              if (!notes.length) return {}
+              let view = captureConfig()
+              if (!notes.some(note => sameOwner(note, view))) throw mismatchFault()
+              view = await readBackConfig(view)
+              if (!view) return
+              const identity = await fingerprint(view)
+              if (!viewCurrent(view)) return
+              const pending = notes.filter(note => sameConnection(note, identity) && note.configurationHash === identity.configurationHash)
+              if (!pending.length) throw mismatchFault()
+              for (const note of pending) {
+                const outcome = await executeNote(note, view)
+                if (!outcome || !flowSettled(outcome)) break
+              }
+              return viewCurrent(view) ? {} : undefined
+            }, true)
+          } finally {
+            if (flowMutations.get(id) === mutation) flowMutations.delete(id)
+          }
+        },
         loadPackages() {
           return run('packages', async () => {
             const manager = service('manager')
@@ -325,8 +614,8 @@ window.__ModuleLoader__.load({
             return { packages, plugins }
           })
         },
-        loadConfig() {
-          return run('config', async () => {
+        async loadConfig() {
+          const loaded = await run('config', async () => {
             const owner = service('configuration')
             const identity = await readConfigIdentity(owner)
             if (!identity || disposed || services.configuration !== owner) return
@@ -344,8 +633,10 @@ window.__ModuleLoader__.load({
             return { configEntry: entryId, configNamespace: namespace,
               config: observeConfig(target.getSnapshot(), entryId, namespace), configSaved: false }
           })
+          if (loaded) await controller.recoverPendingFlow()
+          return loaded
         },
-        saveConfig(draft, revision, entryId, namespace = entryId) {
+        saveConfig(draft, revision, entryId, namespace = entryId, onRefused) {
           return run('configSave', async () => {
             publish({ configSaved: false })
             if (typeof entryId !== 'string' || entryId !== state.configEntry || namespace !== state.configNamespace) {
@@ -363,9 +654,18 @@ window.__ModuleLoader__.load({
             if (identity.entryId !== entryId || identity.namespace !== namespace) {
               throw new Error('配置实例已变化；请重新读取并放弃旧草稿后再改 / Configuration entry changed; reload and discard the old draft')
             }
-            const accepted = await target.mutate(configOperations(draft), revision)
+            let accepted
+            try { accepted = await target.mutate(configOperations(draft), revision) } catch (error) {
+              if (['settings/rejected', 'settings/conflict'].includes(error?.code)) await onRefused?.()
+              throw error
+            }
+            // A definite refusal must retire the note even if this controller
+            // was disposed while the native write was crossing the wire.
+            if (!accepted) {
+              await onRefused?.()
+              throw new Error('保存被拒绝或版本冲突；请重新读取后再改 / Save refused or revision conflict')
+            }
             if (!current()) return
-            if (!accepted) throw new Error('保存被拒绝或版本冲突；请重新读取后再改 / Save refused or revision conflict')
             return { config: observeConfig(target.getSnapshot()), configSaved: true, members: null }
           })
         },
@@ -579,14 +879,16 @@ window.__ModuleLoader__.load({
       .legion-eyebrow{font-size:11px;letter-spacing:1.8px;font-weight:650;color:var(--lp-muted)}.legion-muted,.legion-help{color:var(--lp-muted)}.legion-help{font-size:12px;line-height:1.6}.legion-lead{max-width:690px;font-size:14px;color:var(--lp-muted)}
       .legion-top,.legion-row,.legion-toolbar{display:flex;gap:12px;align-items:center;flex-wrap:wrap}.legion-top{justify-content:space-between;align-items:flex-start}.legion-row.between{justify-content:space-between}.legion-toolbar{margin:18px 0}
       .legion-session{display:grid;gap:5px;min-width:230px;max-width:380px}.legion-panel button,.legion-panel input,.legion-panel select,.legion-panel textarea{font:inherit;color:inherit}.legion-panel button{cursor:pointer;border:1px solid var(--lp-border);border-radius:9px;padding:8px 13px;background:var(--lp-bg);line-height:1.4;min-height:36px}.legion-panel button:hover:not(:disabled):not([aria-disabled=true]){background:var(--dsw-alias-interactive-bg-hover,#f0f2f8)}.legion-panel button:disabled,.legion-panel button[aria-disabled=true]{cursor:not-allowed;opacity:.48}.legion-panel button.primary{background:var(--dsw-alias-button-primary-fill,#4866dd);color:var(--dsw-alias-label-primary-inverted,#fff);border-color:transparent}.legion-panel button.primary:hover:not(:disabled):not([aria-disabled=true]){background:var(--dsw-alias-button-primary-hover,#3c59ce)}
-      .legion-panel :focus-visible{outline:2px solid var(--lp-accent);outline-offset:3px}.legion-panel input:not([type=checkbox]),.legion-panel select,.legion-panel textarea{background:var(--lp-bg);border:1px solid var(--lp-border);border-radius:9px;padding:9px 11px;min-width:0;width:100%}.legion-panel input[type=checkbox]{width:17px;height:17px;accent-color:var(--lp-accent);flex:none}.legion-panel textarea{resize:vertical;min-height:110px}
+      .legion-panel :focus-visible{outline:2px solid var(--lp-accent);outline-offset:3px}.legion-panel input:not([type=checkbox]):not([type=radio]),.legion-panel select,.legion-panel textarea{background:var(--lp-bg);border:1px solid var(--lp-border);border-radius:9px;padding:9px 11px;min-width:0;width:100%}.legion-panel input[type=checkbox],.legion-panel input[type=radio]{width:17px;height:17px;accent-color:var(--lp-accent);flex:none}.legion-panel textarea{resize:vertical;min-height:110px}
       .legion-tabs{display:flex;gap:5px;overflow:auto;border-bottom:1px solid var(--lp-border);margin:27px 0 25px;padding-bottom:10px}.legion-tabs button{border:0;white-space:nowrap;background:none;color:var(--lp-muted)}.legion-tabs button[aria-selected=true]{background:var(--lp-card);color:var(--lp-fg);font-weight:600}
       .legion-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:13px}.legion-card{border:1px solid var(--lp-border);border-radius:14px;padding:19px;min-width:0;background:var(--lp-bg)}.legion-card.chosen{border-color:var(--lp-accent);background:var(--lp-card)}.legion-card .legion-title{display:flex;align-items:flex-start;gap:10px}.legion-title>div{min-width:0;flex:1}.legion-card p,.legion-task p,.legion-panel code,.legion-panel a{overflow-wrap:anywhere}.legion-card p.description{color:var(--lp-muted);font-size:13px;display:-webkit-box;-webkit-line-clamp:3;-webkit-box-orient:vertical;overflow:hidden}
       .legion-badges{display:flex;gap:7px;flex-wrap:wrap;margin-top:12px}.legion-badge{font-size:11px;line-height:1.4;padding:4px 7px;background:var(--lp-card);border:1px solid var(--lp-border);border-radius:6px}.legion-badge.good{color:var(--lp-accent)}
       .legion-callout{border-left:3px solid var(--lp-accent);border-radius:4px;background:var(--lp-card);padding:13px 16px;margin:17px 0}.legion-error{border:1px solid var(--dsw-alias-border-l2,#b87566);background:var(--lp-card);border-radius:10px;padding:12px 15px;margin:12px 0;overflow-wrap:anywhere}.legion-empty{background:var(--lp-card);border:1px dashed var(--lp-border);border-radius:14px;padding:29px;color:var(--lp-muted);margin:16px 0}
       .legion-panel a{color:var(--lp-accent);text-decoration:underline;text-underline-offset:3px}.legion-panel code{font-family:ui-monospace,SFMono-Regular,monospace;font-size:12px}.legion-panel details{border-top:1px solid var(--lp-border);padding-top:12px;margin-top:14px}.legion-panel summary{cursor:pointer;font-size:12px;color:var(--lp-muted)}.legion-panel pre{font-size:11px;line-height:1.6;white-space:pre-wrap;overflow-wrap:anywhere;max-height:360px;overflow:auto;background:var(--lp-card);padding:12px;border-radius:8px}
       .legion-search{flex:1;min-width:160px}.legion-form{display:grid;gap:17px;max-width:720px}.legion-field{display:grid;gap:6px}.legion-form .legion-row>label{flex:1;min-width:180px}.legion-section{margin-top:28px}.legion-list{display:grid;gap:10px}.legion-result-count{font-size:12px;color:var(--lp-muted);margin:10px 0}.legion-task{padding:15px;border:1px solid var(--lp-border);border-radius:10px}.legion-task code{display:block}.legion-panel .legion-busy{font-size:12px;color:var(--lp-muted)}
+      .legion-steps{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:8px;margin:0 0 24px}.legion-steps button{text-align:left;padding:12px 14px;background:var(--lp-card)}.legion-steps button[aria-current=step]{border-color:var(--lp-accent);color:var(--lp-accent);font-weight:600}.legion-team-lead{background:var(--lp-card);border:1px solid var(--lp-border);border-radius:14px;padding:18px 20px;margin:16px 0}.legion-step-actions{display:flex;justify-content:space-between;gap:12px;flex-wrap:wrap;margin-top:26px;padding:14px 0;border-top:1px solid var(--lp-border);position:sticky;bottom:0;z-index:2;background:var(--lp-bg)}.legion-choice{display:flex;align-items:flex-start;gap:11px;padding:18px;border:1px solid var(--lp-border);border-radius:12px;cursor:pointer}.legion-choice.chosen{border-color:var(--lp-accent);background:var(--lp-card)}.legion-choice input{flex:none;margin-top:5px;accent-color:var(--lp-accent)}.legion-choice strong{display:block}.legion-choice p{margin:4px 0 0}.legion-flow-heading{display:flex;justify-content:space-between;align-items:flex-start;gap:14px;flex-wrap:wrap}.legion-flow-time{font-variant-numeric:tabular-nums}.legion-team-summary{display:flex;gap:8px;flex-wrap:wrap;margin:12px 0 20px}
       @media(max-width:760px){.legion-wrap{padding:22px 18px 45px}.legion-grid{grid-template-columns:1fr}.legion-panel h1{font-size:25px}.legion-session{max-width:100%;width:100%}.legion-top{gap:20px}.legion-card{padding:16px}.legion-toolbar{gap:9px}.legion-tabs{margin-top:22px}.legion-form .legion-row>label{min-width:100%}}
+      @media(max-width:440px){.legion-steps{gap:5px}.legion-steps button{padding:10px 8px;font-size:12px}.legion-step-actions>button{flex:1}.legion-team-lead{padding:15px}}
       @media(prefers-reduced-motion:reduce){.legion-panel *{scroll-behavior:auto}}
     `
 
@@ -600,8 +902,11 @@ window.__ModuleLoader__.load({
         ['manager', ['remote.pluginManager'], child => child.remote.pluginManager],
         ['market', ['remote.pluginMarket'], child => child.remote.pluginMarket],
         ['skills', ['remote.skills'], child => child.remote.skills],
-        ['configuration', ['configForms', 'remote.pluginInventory', 'remote.pluginManager'],
-          child => ({ forms: child.configForms, inventory: child.remote.pluginInventory, manager: child.remote.pluginManager })],
+        ['navigation', ['uiWorkspace'], child => child.uiWorkspace],
+        ['models', ['remote.session'], child => child.remote.session],
+        ['configuration', ['configForms', 'remote.pluginInventory', 'remote.pluginManager', 'remote.settings'],
+          child => ({ forms: child.configForms, inventory: child.remote.pluginInventory,
+            manager: child.remote.pluginManager, settings: child.remote.settings })],
       ]) {
         ctx.inject(dependencies, child => {
           child.effect(() => controller.attach(key, resolve(child)), `legion ${key} service`)
@@ -790,6 +1095,10 @@ window.__ModuleLoader__.load({
         const [candidateDraft, setCandidates] = React.useState([])
         const [candidateVersion, setCandidateVersion] = React.useState()
         const [candidateDirty, setCandidateDirty] = React.useState(false)
+        const [teamDraft, setTeamDraft] = React.useState(teamDefaults)
+        const [teamDirty, setTeamDirty] = React.useState(false)
+        const [teamStep, setTeamStep] = React.useState(0)
+        const [editingTeam, setEditingTeam] = React.useState(false)
         const [query, setQuery] = React.useState('')
         const [sourceKind, setSourceKind] = React.useState('local')
         const [marketIndex, setMarketIndex] = React.useState('')
@@ -822,11 +1131,18 @@ window.__ModuleLoader__.load({
             setCandidates(rows(value.candidateHarnesses))
             setCandidateVersion({ entryId: state.configEntry, namespace: state.configNamespace, revision: state.config.revision })
           }
+          if (!teamDirty) setTeamDraft({ ...teamDefaults(), ...value.teamProfile })
           if (!configDirty) {
             setConfigDraft({ baseUrl: value.baseUrl || '', tokenEnv: value.tokenEnv || '', tokenFile: value.tokenFile || '' })
             setConfigVersion({ entryId: state.configEntry, namespace: state.configNamespace, revision: state.config.revision })
           }
-        }, [state.config, state.configEntry, state.configNamespace, candidateDirty, configDirty])
+        }, [state.config, state.configEntry, state.configNamespace, candidateDirty, configDirty, teamDirty])
+        React.useEffect(() => {
+          if (state.sessionId && state.config?.status === 'ready') void controller.loadFlow()
+        }, [state.sessionId, state.config?.revision, state.configEntry])
+        React.useEffect(() => {
+          if (state.sessionId && state.available.models) void controller.loadModelStatus()
+        }, [state.sessionId, state.available.models, state.flow])
         React.useEffect(() => {
           if (!taskRead) return
           if (tab !== 'tasks' || taskRead.sessionId !== state.sessionId) {
@@ -879,7 +1195,8 @@ window.__ModuleLoader__.load({
           setTab('add')
           void controller.inspectSource(item.repository)
         }
-        const members = rows(state.members?.runtime?.harnesses)
+        const sourceOnlyCount = rows(state.members?.runtime?.harnesses).filter(member => !memberFacts(member).selectable).length
+        const members = rows(state.members?.runtime?.harnesses).filter(member => memberFacts(member).selectable)
           .filter(member => `${member.key} ${member.display_name || ''}`.toLowerCase().includes(memberFilter.toLowerCase()))
         const selectable = member => memberFacts(member).selectable
         const toggleMember = (key, checked) => {
@@ -888,9 +1205,12 @@ window.__ModuleLoader__.load({
         }
         const renderMembers = () => h(React.Fragment, null,
           h('div', { className: 'legion-row between' },
-            h('div', null, h('h2', null, t('按需要组建，不必全部安装', 'Build the team you need')),
+            h('div', null, h('h2', null, t('选择谁与你并肩作战', 'Choose who works alongside you')),
               h('p', { className: 'legion-help' }, t('候选留空，由军团选人。勾选只改变偏好，不安装成员，也不增加权限。', 'Leave candidates empty for Legion to choose. Selection is a preference, not installation or authorization.'))),
             h(Button, { disabled: !state.sessionId || busy('members'), onClick: () => controller.loadMembers() }, t('刷新成员', 'Refresh members'))),
+          h('div', { className: 'legion-team-lead' }, h('strong', null, t('DSH · 你的主场', 'DSH · Your home base')),
+            h('p', { className: 'legion-help' }, t('战队从这里出发，沿用你的模型、工具、工作区和权限。其他成员可以加入同一个目标，分工、互查、互相借力。',
+              'Your models, tools, workspace and permissions stay here. Other members can join the same goal, share work and check one another.'))),
           state.errors.members ? h('p', { className: 'legion-help' }, t(
             '暂时无法读取军团成员，请到「连接与配置」核对地址和服务；找能力和 DSH 能力包仍可用。',
             'Legion members could not be read. Check the address and service under Connection; Discover and DSH capability packages remain available.',
@@ -903,18 +1223,11 @@ window.__ModuleLoader__.load({
             h('div', { className: 'legion-search' }, h('input', { value: memberFilter,
               onChange: event => setMemberFilter(event.target.value), placeholder: t('按成员名称筛选', 'Filter member names'), 'aria-label': t('筛选成员', 'Filter members') })),
             h(Button, { disabled: busy('configSave'), onClick: () => { setCandidates([]); setCandidateDirty(true) } }, t('交给军团选人', 'Let Legion choose')),
-            h(Button, { primary: true, disabled: !candidateDirty || !state.config?.writable || busy('configSave'),
-              onClick: async () => {
-                const accepted = await controller.saveConfig({ candidateHarnesses: candidateDraft },
-                  candidateVersion?.revision, candidateVersion?.entryId, candidateVersion?.namespace)
-                if (accepted) setCandidateDirty(false)
-              } }, t(`保存选择（${candidateDraft.length}）`, `Save selection (${candidateDraft.length})`)),
-            candidateDirty ? h(Button, { disabled: busy('configSave'), onClick: () => setCandidateDirty(false) },
-              t('放弃未保存选择', 'Discard unsaved selection')) : null),
+            h(Button, { onClick: () => openTab('add') }, t('添加新的战友或工具', 'Add a companion or tool'))),
           error('configSave'), error('config'),
           candidateDraft.length ? h('p', { className: 'legion-help' }, t('当前候选：', 'Candidates: '), candidateDraft.join(', ')) : null,
           state.members && !members.length ? h(Empty, null, t('本次没有匹配的成员；这不代表其他成员已安装或可用。', 'No matching members in this observation.')) : null,
-          h('div', { className: 'legion-grid' }, ...members.map(member => {
+          h('div', { className: 'legion-grid legion-member-grid' }, ...members.map(member => {
             const facts = memberFacts(member)
             const selected = candidateDraft.includes(member.key)
             return h('article', { key: member.key, className: `legion-card${selected ? ' chosen' : ''}` },
@@ -933,8 +1246,201 @@ window.__ModuleLoader__.load({
                 t('当前模型：', 'Current model: '), member.model.display_name || member.model.model) : null,
               h(Details, { value: { ...facts, readiness: member.readiness, entry_points: member.entry_points } }))
           })),
+          sourceOnlyCount ? h('p', { className: 'legion-help' },
+            t(`另有 ${sourceOnlyCount} 个工具来源，不作为执行战友；可以在「找能力」中查看。`,
+              `${sourceOnlyCount} tool sources are separate from execution companions; explore them in Discover.`)) : null,
           h(Details, { value: state.members && { source: state.members.source, observed_at: state.members.observed_at,
             verification: state.members.verification, projection: state.members.projection } }))
+
+        const editTeam = (field, value) => {
+          setTeamDraft(previous => ({ ...previous, [field]: value }))
+          setTeamDirty(true)
+        }
+        const flowBusy = ['flowStart', 'flowPause', 'flowRun', 'flowRecovery', 'teamSetup'].some(busy)
+        const modelNotice = () => state.modelStatus?.available === false ? h('div', { className: 'legion-callout', role: 'status' },
+          h('strong', null, t('任务可以安排，但当前会话还没有可用模型', 'Schedules are available; this conversation has no usable model')),
+          h('p', { className: 'legion-help' }, t('先在 DSH 原生会话选择模型或添加自己的 API Key。配置好后回这里点“现在再做一轮”，或等待下次自动任务。',
+            'Choose a model or add your API key in the native DSH conversation. Then run another round here or wait for the next scheduled one.')),
+          h(Button, { disabled: !state.available.navigation, onClick: () => controller.openFlowSession() },
+            t('去工作会话配置模型', 'Configure model in conversation')))
+          : state.modelStatus?.lastError ? h('div', { className: 'legion-callout' },
+            h('strong', null, t('原会话最近记录了执行错误', 'The conversation recorded an execution error')),
+            h('p', { className: 'legion-help' }, state.modelStatus.lastError),
+            h('p', { className: 'legion-help' }, t('模型在目录中可用不代表本次已经执行成功，请打开原会话检查。', 'A listed model does not prove this run succeeded; check the original conversation.')))
+            : state.errors.modelStatus ? h('p', { className: 'legion-help' },
+              t('暂未取得模型状态，不据此判定能否执行：', 'Model readiness is unknown: '), state.errors.modelStatus) : null
+        const renderFlow = () => {
+          const flow = state.flow
+          const schedules = rows(flow?.schedules)
+          const active = schedules.filter(item => item.status === 'active')
+          const delivered = schedules.filter(item => item.lastDelivery?.deliveredAt)
+          const profile = record(state.config?.value?.teamProfile) ? state.config.value.teamProfile : null
+          const initialObserved = bool(flow?.workflow?.initialObserved)
+          const recurringActive = bool(flow?.workflow?.recurringActive)
+          const configurationMatches = bool(flow?.workflow?.configurationMatches)
+          const time = value => value ? new Date(value).toLocaleString(
+            t('zh-CN', 'en-US'), { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' },
+          ) : t('未取得', 'Unknown')
+          return h(React.Fragment, null,
+            h('div', { className: 'legion-flow-heading' },
+              h('div', null, h('h2', null, profile?.name || t('当前会话的已有计划', 'Existing plans for this conversation')),
+                profile ? h('p', { className: 'legion-help' }, t('全局默认目标：', 'Global default goal: '), profile.goal) : null),
+              h(Button, { disabled: flowBusy, onClick: () => { setEditingTeam(true); setTeamStep(0) } },
+                profile ? t('调整战队', 'Edit team') : t('设置战队默认配置', 'Set team defaults'))),
+            h('p', { className: 'legion-help' }, t('战队配置是全局默认；保存并更新只更新当前工作会话的计划。其他会话仍保留自己的计划快照，切换后可明确同步。',
+              'Team settings are global defaults. Saving and updating changes only this conversation’s plans. Other conversations retain their own snapshots until you explicitly sync them.')),
+            profile ? h('div', { className: 'legion-team-summary' },
+              h(Badge, null, t('默认协作：', 'Default collaboration: '), ({
+                auto: t('自主组织', 'Self-organizing'), leader: t('指定带队', 'Chosen leader'),
+                custom: t('按我的要求', 'My requirements'),
+              })[profile.collaboration] || t('自主组织', 'Self-organizing')),
+              h(Badge, null, profile.evolutionEnabled === false ? t('默认自主改进：关闭', 'Default improvement: off') : t('默认自主改进：允许', 'Default improvement: enabled')),
+              h(Badge, null, profile.cadence === 'manual' ? t('默认频率：仅手动', 'Default cadence: manual')
+                : profile.cadence === 'daily' ? t('默认频率：每日', 'Default cadence: daily') : t('默认频率：每周', 'Default cadence: weekly')))
+              : h('p', { className: 'legion-callout' }, t('默认战队配置尚未设置；下方已有计划仍可能运行，可以暂停，不会因为配置缺失就自动停止。',
+                'Team defaults are not configured. Existing plans may still run and can be paused; missing defaults do not stop them.')),
+            configurationMatches === false ? h('div', { className: 'legion-callout', role: 'status' },
+              h('strong', null, state.flowStale ? t('上次核对：当前会话计划仍使用旧配置', 'Previous check: this conversation still used older settings')
+                : t('当前会话仍使用旧配置，尚未同步', 'This conversation still uses older settings')),
+              h('p', { className: 'legion-help' }, t('上方是默认偏好，不是这条旧任务的开关状态。请用“恢复／同步当前会话计划”明确更新，或直接暂停。',
+                'The defaults above are not the old task’s switch state. Explicitly sync this conversation’s plans, or pause them.'))) : null,
+            h('section', { className: 'legion-team-lead', 'aria-label': t('自动工作状态', 'Automatic work status') },
+              h('strong', { role: 'status' }, state.flowStale ? t('上次记录，需要刷新核对', 'Previous observation — refresh to check')
+                : !flow?.catalogVerified ? state.errors.flowStatus || (flow?.code && flow.code !== 'ok')
+                  ? t('自动安排尚未核实，请看具体原因', 'Schedule not verified; see the reason below')
+                  : t('正在核对原生任务安排', 'Checking native schedules')
+                  : flow.partial ? t('部分安排未确认，请看下面的原因', 'Some changes are unconfirmed; see below')
+                    : configurationMatches === false ? t('当前会话计划未同步到默认配置', 'This conversation’s plans are not synced to the defaults')
+                      : profile && profile.cadence !== 'manual' && initialObserved === true && recurringActive === false
+                        ? t('首次已安排，未观察到周期任务', 'Initial work is scheduled; no recurring task was observed')
+                        : active.length ? !profile ? t('发现当前会话的已有自动任务', 'Existing automatic work was observed')
+                          : configurationMatches === true && initialObserved === true
+                            && (profile.cadence === 'manual' || recurringActive === true)
+                            ? t('当前会话的安排与配置已核对', 'This conversation’s schedules and settings were checked')
+                            : t('已观察到任务，完整安排仍待核对', 'Tasks were observed; the complete workflow still needs checking')
+                      : delivered.length ? t('本轮任务已投递，当前没有后续安排', 'Work delivered; no future schedule is active')
+                        : t('当前没有自动任务', 'No automatic work scheduled')),
+              h('p', { className: 'legion-help' }, t('DSH 到时间会在这个工作会话继续。任务已安排、模型实际执行和改进有效是三件事；最终结果在原会话查看。',
+                'DSH resumes this conversation when work is due. Scheduling, model execution and a verified improvement are separate; inspect results in the original conversation.')),
+              h('div', { className: 'legion-toolbar' },
+                h(Button, { primary: true, disabled: !state.sessionId || !state.available.navigation,
+                  onClick: () => controller.openFlowSession() }, t('打开工作会话，看实际结果', 'Open conversation and results')),
+                h(Button, { disabled: !state.sessionId || busy('flowStatus') || flowBusy,
+                  onClick: () => controller.loadFlow() }, t('刷新安排', 'Refresh schedules'))),
+              !state.available.navigation ? h('p', { className: 'legion-help' },
+                t('也可在 DSH 左侧打开上方所选的工作会话。', 'You can also open the selected conversation in the DSH sidebar.')) : null),
+            modelNotice(),
+            ...['flowStatus', 'flowStart', 'flowPause', 'flowRun', 'flowRecovery', 'flowOpen', 'teamSetup', 'configSave'].map(key => h(React.Fragment, { key }, error(key))),
+            status('flowStatus'),
+            ...rows(flow?.observations).filter(note => note.code !== 'delivery_not_execution').map((note, index) =>
+              h('p', { className: 'legion-help', key: index }, note.message)),
+            h('div', { className: 'legion-list' }, ...schedules.map(item =>
+              h('article', { className: 'legion-task', key: item.id },
+                h('strong', null, item.title || t('原生自动任务', 'Native scheduled work')),
+                h('p', { className: 'legion-help legion-flow-time' }, item.status === 'active'
+                  ? `${t('下次：', 'Next: ')}${time(item.scheduledAt)}` : t('当前不再等待投递', 'Not awaiting another delivery')),
+                h('p', { className: 'legion-help' }, item.matchesConfiguration === true
+                  ? t('此任务与当前默认配置一致', 'This task matches the current defaults')
+                  : item.matchesConfiguration === false ? t('此任务保留旧配置，尚未同步', 'This task retains older settings')
+                    : t('此任务与默认配置的关系尚未核实', 'This task’s settings have not been matched to the defaults')),
+                item.lastDelivery?.deliveredAt ? h('p', { className: 'legion-help legion-flow-time' },
+                  t('已投递：', 'Delivered: '), time(item.lastDelivery.deliveredAt)) : null))),
+            h('div', { className: 'legion-step-actions' },
+              h(Button, { disabled: !profile || !state.sessionId || flowBusy,
+                onClick: () => controller.runFlow() }, state.flowRunKey
+                ? t('核对并重试上次开工', 'Retry the unconfirmed run') : t('现在再做一轮', 'Run another round now')),
+              h('div', { className: 'legion-row' },
+                h(Button, { disabled: !profile || !state.sessionId || flowBusy,
+                  onClick: () => controller.startFlow() }, configurationMatches === false
+                  ? t('恢复／同步当前会话计划', 'Resume / sync this conversation’s plans')
+                  : t('恢复／核对自动安排', 'Resume / reconcile schedules')),
+                h(Button, { disabled: !state.sessionId || flowBusy || (!state.flowStale && flow?.enabled === false),
+                  onClick: () => controller.pauseFlow() }, t('暂停后续自动工作', 'Pause future work')))),
+            h('p', { className: 'legion-help' }, t('暂停不会撤回已投递的消息或打断正在运行的模型；需要停止当前工作，请在原会话点击停止。',
+              'Pausing does not retract delivered messages or stop a running model. Stop current work in the original conversation.')),
+            h(Details, { value: flow, label: t('查看原生任务记录与投递事实', 'Native schedule and delivery facts') }))
+        }
+        const renderTeam = () => {
+          if (!editingTeam && (state.config?.value?.teamProfile || state.flow?.enabled === true
+            || rows(state.flow?.schedules).length)) return renderFlow()
+          const choices = [
+            ['auto', t('自主组织', 'Self-organizing'), t('你给目标，战队自己决定谁带队、谁研究、谁实现、谁互查。', 'Give the goal; the team chooses who leads, researches, builds and reviews.')],
+            ['leader', t('指定带队者', 'Choose a leader'), t('选一个已加入的战友带队，其他成员按需要补位。', 'A selected companion leads; others help where needed.')],
+            ['custom', t('我的协作要求', 'My collaboration requirements'), t('写下你的偏好，不把所有任务锁进同一套流程。', 'Describe your preferences without fixing one workflow for every task.')],
+          ]
+          const profileValid = teamDraft.name.trim() && teamDraft.goal.trim()
+            && (teamDraft.collaboration !== 'leader' || candidateDraft.includes(teamDraft.leader))
+            && (teamDraft.collaboration !== 'custom' || teamDraft.instructions.trim())
+          return h(React.Fragment, null,
+            h('nav', { className: 'legion-steps', 'aria-label': t('组队步骤', 'Team setup steps') },
+              ...[t('1 · 选战友', '1 · Companions'), t('2 · 定协作', '2 · Collaboration'), t('3 · 自动变强', '3 · Grow together')]
+                .map((label, step) => h(Button, { key: step, 'aria-current': teamStep === step ? 'step' : undefined,
+                  disabled: flowBusy, onClick: () => setTeamStep(step) }, label))),
+            teamStep === 0 ? renderMembers() : teamStep === 1 ? h(React.Fragment, null,
+              h('h2', null, t('让大家如何一起干活？', 'How should the team work together?')),
+              h('p', { className: 'legion-help' }, t('同一个目标，互相借用工具、接着对方的工作继续，而不是给你堆几份答案。',
+                'One goal, shared tools and work that builds on each other — not a pile of unrelated answers.')),
+              h('div', { className: 'legion-list legion-section' }, ...choices.map(([value, label, description]) =>
+                h('label', { className: `legion-choice${teamDraft.collaboration === value ? ' chosen' : ''}`, key: value },
+                  h('input', { type: 'radio', name: 'legion-collaboration', value,
+                    checked: teamDraft.collaboration === value, onChange: () => editTeam('collaboration', value) }),
+                  h('div', null, h('strong', null, label), h('p', { className: 'legion-help' }, description))))),
+              teamDraft.collaboration === 'leader' ? h('div', { className: 'legion-section legion-form' },
+                h(Field, { title: t('谁来带队', 'Team leader') }, h('select', { value: teamDraft.leader,
+                  onChange: event => editTeam('leader', event.target.value) },
+                h('option', { value: '' }, t('从已选战友中选择', 'Select a chosen companion')),
+                ...candidateDraft.map(key => h('option', { key, value: key }, key)))),
+                !candidateDraft.length ? h('p', { className: 'legion-help' }, t('先回第一步选一位战友，或选择自主组织。', 'Choose a companion in step one, or use self-organization.')) : null) : null,
+              teamDraft.collaboration === 'custom' ? h('div', { className: 'legion-section legion-form' },
+                h(Field, { title: t('你的协作要求', 'Your requirements') }, h('textarea', {
+                  value: teamDraft.instructions, maxLength: 2000,
+                  placeholder: t('例如：让擅长研究的成员先查清资料，实现后请另一位成员实际使用和检查。', 'For example: research first; have another member use and check the result.'),
+                  onChange: event => editTeam('instructions', event.target.value),
+                }))) : null) : h(React.Fragment, null,
+              h('h2', null, t('一次组队，之后自己往前走', 'Set up once; let the team move forward')),
+              h('p', { className: 'legion-help' }, t('提交后自动开始第一轮，以后按下面的频率继续。不需要再点一次“开启”。',
+                'Submitting starts the first round and schedules follow-ups. No extra activation step.')),
+              h('p', { className: 'legion-help' }, t('这里修改全局默认配置，但只更新当前所选会话的计划；其他会话不会自动同步，也不会因此关闭旧任务。',
+                'This changes global defaults but updates only the selected conversation’s plans. Other conversations are not automatically synced or stopped.')),
+              modelNotice(),
+              h('div', { className: 'legion-form legion-section' },
+                h(Field, { title: t('战队名称', 'Team name') }, h('input', { value: teamDraft.name, maxLength: 80,
+                  onChange: event => editTeam('name', event.target.value) })),
+                h(Field, { title: t('希望战队持续帮你做到什么？', 'What should the team keep improving?') }, h('textarea', {
+                  value: teamDraft.goal, maxLength: 4000, onChange: event => editTeam('goal', event.target.value),
+                })),
+                h('label', { className: `legion-choice${teamDraft.evolutionEnabled ? ' chosen' : ''}` },
+                  h('input', { type: 'checkbox', checked: teamDraft.evolutionEnabled,
+                    onChange: event => editTeam('evolutionEnabled', event.target.checked) }),
+                  h('div', null, h('strong', null, t('允许战队自主改进', 'Enable autonomous improvement')),
+                    h('p', { className: 'legion-help' }, t('从真实工作和失败中找问题，互相研究、修正工具和方法，验证后再复用。关闭后只发现新能力，不进行自主修改。',
+                      'Learn from real work, inspect one another and improve tools and methods, then verify before reuse. Turn off to discover without self-modification.')))),
+                h(Field, { title: t('多久发现新能力、继续改进一次？', 'Discovery and improvement frequency') }, h('select', {
+                  value: teamDraft.cadence, onChange: event => editTeam('cadence', event.target.value),
+                }, h('option', { value: 'weekly' }, t('每周一次 · 默认', 'Weekly · default')),
+                h('option', { value: 'daily' }, t('每天一次', 'Daily')),
+                h('option', { value: 'manual' }, t('只做首次，后续我来点', 'First round only; later rounds on demand')))),
+                h('p', { className: 'legion-help' }, t('使用你为 DSH 配置的模型，会产生该模型的正常用量。新成员、安装与外发仍沿用原来的授权，随时可暂停。',
+                  'Uses your configured DSH model and its normal usage. Member installation and external actions retain existing permissions. Pause at any time.')))),
+            h('div', { className: 'legion-step-actions' },
+              h('div', { className: 'legion-row' },
+                teamStep > 0 ? h(Button, { disabled: flowBusy, onClick: () => setTeamStep(teamStep - 1) }, t('上一步', 'Back')) : null,
+                editingTeam ? h(Button, { disabled: flowBusy, onClick: () => {
+                  setEditingTeam(false); setCandidateDirty(false); setTeamDirty(false)
+                } }, t('取消修改', 'Cancel changes')) : null),
+              teamStep < 2 ? h(Button, { primary: true, disabled: flowBusy, onClick: () => setTeamStep(teamStep + 1) },
+                teamStep === 0 ? t('下一步：协作方式', 'Next: collaboration') : t('下一步：自动变强', 'Next: ongoing improvement'))
+                : h(Button, { primary: true, disabled: !state.sessionId || !state.config?.writable || flowBusy || !profileValid,
+                  onClick: async () => {
+                    const accepted = await controller.saveAndStartTeam({ candidateHarnesses: candidateDraft, teamProfile: teamDraft },
+                      candidateVersion?.revision, candidateVersion?.entryId, candidateVersion?.namespace)
+                    if (accepted) { setCandidateDirty(false); setTeamDirty(false); setEditingTeam(false); setTeamStep(0) }
+                  } }, busy('teamSetup') ? t('正在保存并安排…', 'Saving and scheduling…')
+                    : editingTeam ? t('保存并更新自动安排', 'Save and update schedules') : t('组建战队并自动开工', 'Form team and start automatically'))),
+            teamStep === 2 && (!state.sessionId || !state.config?.writable) ? h('p', { className: 'legion-help' },
+              t('请选择工作会话，并确认 DSH 原生配置可编辑；你的输入会保留。', 'Select a conversation and ensure native settings are writable. Your input stays here.')) : null,
+            ...['teamSetup', 'configSave', 'flowStart', 'flowRecovery'].map(key => h(React.Fragment, { key }, error(key))))
+        }
 
         const renderSearch = () => {
           const found = state.search
@@ -1178,8 +1684,8 @@ window.__ModuleLoader__.load({
           h('div', { className: 'legion-wrap' },
             h('header', { className: 'legion-top' },
               h('div', null, h('div', { className: 'legion-eyebrow' }, 'LEGION / DSH'),
-                h('h1', null, t('让能力成为一支团队', 'Turn capabilities into a team')),
-                h('p', { className: 'legion-lead' }, t('选择合适的成员，找到缺少的能力。研究与实现交给军团，配置和进展在这里看清楚。', 'Choose members and discover what is missing. Delegate research and implementation to Legion; keep configuration and progress clear.'))),
+                h('h1', null, t('你的 DSH，有了一支战队', 'Your DSH, with a team alongside')),
+                h('p', { className: 'legion-lead' }, t('各路 Harness 围绕同一个目标协作，开放工具、互相学习。你定方向，让战队自己发现、行动和改进。', 'Harnesses work toward one goal, sharing tools and learning from one another. Set the direction; let the team discover, act and improve.'))),
               h('label', { className: 'legion-session' }, h('span', { className: 'legion-help' }, t('当前工作会话', 'Working session')),
                 h('select', { value: state.sessionId, 'aria-label': t('当前工作会话', 'Working session'), onChange: event => selectSession(event.target.value) },
                   h('option', { value: '' }, t('请选择会话', 'Select a session')),
@@ -1194,7 +1700,7 @@ window.__ModuleLoader__.load({
               ].map(([id, label]) => h(Button, { role: 'tab', key: id, 'aria-selected': tab === id,
                 'aria-controls': `legion-tab-${id}`, onClick: () => openTab(id) }, label))),
             h('div', { id: `legion-tab-${tab}`, role: 'tabpanel' },
-              tab === 'members' ? renderMembers() : tab === 'search' ? renderSearch() : tab === 'add' ? renderAdd()
+              tab === 'members' ? renderTeam() : tab === 'search' ? renderSearch() : tab === 'add' ? renderAdd()
                 : tab === 'tasks' ? renderTasks() : renderConfig())))
       }
       const Icon = () => h('svg', { width: 20, height: 20, viewBox: '0 0 24 24', fill: 'none', 'aria-hidden': true },

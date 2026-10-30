@@ -66,6 +66,8 @@ discover／source／bundle／call 不是 `/legion` 的位置参数子命令；�
 | `tasks` | 无参数；省略 `args` 或传 `{}`。 | `client.list` |
 | `status` | 必填 `task_ref`，恰为 32 位小写十六进制；不支持省略、`latest` 或事件／消息游标参数。 | `client.status` |
 | `submit` | 非空 `key`（最多 160 字符）、`query`（最多 100000 字符）；可选文本 `context`（最多 200000 字符，允许空）。 | `client.submit`，保留原 key 去重／恢复 |
+| `flow_status`／`flow_start`／`flow_pause`（0.5.0） | 无附加字段；身份仅来自原生会话。 | 原生计划查询、安排／核对与暂停，不调用外部模型或核心。 |
+| `flow_run`（0.5.0） | 非空 `key`（最多 128 字符）；重试同一操作保留原 key。 | 通过原生调度安排明确的新一轮，不是重建任务执行器。 |
 
 字符上限按 JavaScript 字符串长度校验；不接受含孤立代理项的字符串。`submit` 不接受 `previous_task_ref`、`tool_names`、候选成员或安装配置；这些不因存在于其他工具契约就自动开放给工作台命令。
 
@@ -73,7 +75,7 @@ discover／source／bundle／call 不是 `/legion` 的位置参数子命令；�
 
 | 页面 | 实际通道 |
 |---|---|
-| 我的军团 / My Legion | `runtime` 的 members 观察；保存选择走原生配置服务的 `candidateHarnesses`，不是安装或授权。 |
+| 我的军团 / My Legion | `runtime` 的 members 观察；原生配置保存 `candidateHarnesses`／`teamProfile`，随后 `flow_start` 安排工作。`flow_status/pause/run` 查询、暂停和再跑；配置、投递和模型执行分开。 |
 | 找能力 / Discover | `tools`／`github`；Skill 列表走原生 `skills`，市场走原生 `pluginMarket` 的已配置索引。Skill 是指导，不是新增工具。 |
 | 添加能力 / Add capabilities | `inspect` 准备来源事实，明确委托才 `submit`；检查、安装和开关走官方 `pluginManager`，不是新增 panel 动作。 |
 | 接入任务 / Integration tasks | `tasks` 读本地索引，`status` 主动读实时观察；不自动轮询或执行来信。 |
@@ -96,6 +98,7 @@ discover／source／bundle／call 不是 `/legion` 的位置参数子命令；�
 | `tasks` | `{ tasks: [{ task_ref, key, team_id, created_at, previous_task_ref? }], source: "local_recovery_index_not_live_status" }`；不是服务实时任务全表。 |
 | `status` | `{ task_ref, team_id, connection, runtime, events, next_event_id, more_events, artifacts, mailbox, artifact_source, experience_verification }`。本入口默认从事件／消息游标 0 读取；后续分页用 `legion_status` 的游标参数。 |
 | `submit` | `{ task_ref, team_id, session_id, submission, next, ... }`；依回执可有 `reason`、`http_status`、`reused`、`request_sent`、`remote_task_cancelled`。 |
+| `flow_*`（0.5.0） | `{ configured, enabled, code, partial, cancelled, catalogVerified, workflow, schedules, observations, results, execution: "not_verified" }`。`workflow` 独立报告首次／周期是否观察到及当前配置是否匹配；每条计划可带 `lastDelivery`，不返回原指令或凭据。 |
 
 `ok: true` 只表示命令交回了观察。`submission: "accepted"` 是接单，`"unconfirmed"` 仍是不确定，二者都不是任务完成。重读到已保存的 `"rejected"` 时返回错误，并在 `diagnostics` 保留有限回执和原引用；首次异常不保证附带引用，可用原会话 `tasks` 找记录。网络错误、取消或输出过大都不能推断“没有派单”，不要换 key 盲目重发。仅客户端已有“未进入 HTTP 发送”的持久化证据时，允许修复后用原 key 重试；工作台不自行判断未发送。
 

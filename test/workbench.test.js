@@ -897,3 +897,135 @@ test('complete export observations remain complete when unrelated task prose is 
   assert.equal(value.sections.artifacts.complete, true)
   assert.equal(value.truncated, true, 'Other sections still report their own projection loss')
 })
+
+test('team wiring: the optional fifth dependency routes all four flow actions with only Host identity and caller arguments', async t => {
+  const f = await fixture(t)
+  const execute = await adapter()
+  for (const [action, method, args] of [
+    ['flow_status', 'status', undefined], ['flow_start', 'start', {}],
+    ['flow_pause', 'pause', undefined], ['flow_run', 'run', { key: '再次-🧭' }],
+  ]) {
+    const calls = []
+    const observation = {
+      configured: true, enabled: true, code: 'partial', partial: true,
+      schedules: [{ id: 'original-schedule', status: 'active', scheduledAt: '2026-10-31T01:00:00.000Z' }],
+      observations: [{ code: 'create_failed', message: '保留已经安排的任务；本项失败' }],
+      execution: 'not_verified',
+    }
+    const flow = { async [method](...values) { calls.push(values); return observation } }
+    const current = invocation({ action, ...(args ? { args } : {}) })
+    const result = unpack(await execute(f.ctx, f.client, f.sources, current, flow))
+    assert.equal(result.ok, true)
+    assert.equal(result.action, action)
+    assert.equal(result.value.code, 'partial')
+    assert.equal(result.value.execution, 'not_verified')
+    assert.deepEqual(result.value.schedules, observation.schedules)
+    assert.deepEqual(result.value.observations, observation.observations)
+    assert.deepEqual(calls, [method === 'run'
+      ? [args, { sessionId: current.agent.id, signal: current.signal }]
+      : [{ sessionId: current.agent.id, signal: current.signal }]])
+  }
+  assert.equal(f.calls.length, 0)
+})
+
+test('team wiring: old four-argument calls still work and an absent flow gives an actionable error', async t => {
+  const f = await fixture(t)
+  const execute = await adapter()
+  t.mock.method(f.client, 'list', async () => ({ tasks: [], source: 'local_recovery_index_not_live_status' }))
+  assert.equal(unpack(await execute(f.ctx, f.client, f.sources, invocation({ action: 'tasks' }))).ok, true)
+  for (const action of ['flow_status', 'flow_start', 'flow_pause', 'flow_run']) {
+    const result = unpack(await execute(f.ctx, f.client, f.sources,
+      invocation({ action, ...(action === 'flow_run' ? { args: { key: 'retry-key' } } : {}) })))
+    assert.equal(result.ok, false)
+    assert.equal(result.action, action, 'Recognize the action even when the optional dependency is absent')
+    assert.match(result.error, /战队|flow|schedule/)
+  }
+  assert.equal(f.calls.length, 0)
+})
+
+test('team wiring: flow fields and run keys are validated before any schedule or other dependency access', async t => {
+  const f = await fixture(t)
+  const execute = await adapter()
+  const flow = Object.fromEntries(['status', 'start', 'pause', 'run']
+    .map(method => [method, () => assert.fail('Invalid flow input must be rejected before dependency access')]))
+  const inputs = ['flow_status', 'flow_start', 'flow_pause', 'flow_run']
+    .map(action => ({ action, args: action === 'flow_run' ? { key: 'valid-key' } : {} }))
+  for (const input of inputs) {
+    for (const field of ['sessionId', 'owner', 'signal', 'teamProfile', 'candidateHarnesses',
+      'authority', 'config', 'attachments', '__proto__', 'PRIVATE_FLOW_INPUT']) {
+      for (const raw of [
+        { ...input, [field]: 'PRIVATE_FLOW_INPUT' },
+        { ...input, args: { ...input.args, [field]: 'PRIVATE_FLOW_INPUT' } },
+      ]) {
+        const result = await execute(f.ctx, f.client, f.sources, invocation(raw), flow)
+        assert.equal(unpack(result).ok, false)
+        assert.ok(!result.text.includes('PRIVATE_FLOW_INPUT'))
+      }
+    }
+    for (const args of [null, [], 1]) {
+      assert.equal(unpack(await execute(f.ctx, f.client, f.sources, invocation({ action: input.action, args }), flow)).ok, false)
+    }
+  }
+  for (const key of [undefined, null, '', ' ', ' leading', 'trailing ', 'a\nb', 'a\u0000b', 'a\u007fb',
+    '\ud800', 'x'.repeat(129), 1, true, {}, []]) {
+    const result = await execute(f.ctx, f.client, f.sources, invocation({ action: 'flow_run', args: { key } }), flow)
+    assert.equal(unpack(result).ok, false)
+  }
+  const valid = await execute(f.ctx, f.client, f.sources, invocation({ action: 'flow_run', args: { key: 'x'.repeat(128) } }),
+    { async run(args) { return { acceptedKey: args.key, execution: 'not_verified' } } })
+  const accepted = unpack(valid)
+  assert.equal(accepted.ok, true, 'A valid flow_run key must reach the optional flow dependency')
+  assert.equal(accepted.value.acceptedKey.length, 128)
+  assert.equal(f.calls.length, 0)
+})
+
+test('team wiring: flow cannot be triggered by missing identity, invalid signals, attachments or a pre-aborted caller', async t => {
+  const f = await fixture(t)
+  const execute = await adapter()
+  const flow = { start() { assert.fail('No valid Host invocation, no flow call') } }
+  const current = invocation({ action: 'flow_start' })
+  const cancelled = new AbortController()
+  cancelled.abort(new Error('PRIVATE_FLOW_ABORT'))
+  for (const input of [
+    { ...current, agent: undefined }, { ...current, agent: { id: '' } },
+    { ...current, signal: undefined }, { ...current, signal: {} },
+    { ...current, attachments: [{ type: 'file', content: 'PRIVATE_FLOW_ATTACHMENT' }] },
+    { ...current, attachments: {} }, { ...current, signal: cancelled.signal },
+  ]) {
+    const result = await execute(f.ctx, f.client, f.sources, input, flow)
+    assert.equal(unpack(result).ok, false)
+    assert.doesNotMatch(result.text, /PRIVATE_FLOW_ABORT|PRIVATE_FLOW_ATTACHMENT/)
+  }
+  assert.equal(f.calls.length, 0)
+})
+
+test('team wiring: flow observations and failures retain original uncertainty while using the existing bounded redaction', async t => {
+  const f = await fixture(t)
+  const execute = await adapter()
+  const current = invocation({ action: 'flow_status' })
+  const result = await execute(f.ctx, f.client, f.sources, current, { async status() {
+    return {
+      configured: true, enabled: null, code: 'service_missing', partial: false, execution: 'not_verified',
+      schedules: [], observations: [{ code: 'service_missing', message: `原生 schedule 不可用 Bearer ${TOKEN}` }],
+      description: '很长的原生说明'.repeat(2000), token: TOKEN,
+    }
+  } })
+  const body = unpack(result)
+  assert.equal(body.ok, true)
+  assert.equal(body.value.enabled, null)
+  assert.equal(body.value.code, 'service_missing')
+  assert.equal(body.value.execution, 'not_verified')
+  assert.ok(body.value.truncated)
+  assert.ok(body.value.projection.omitted_fields.includes('$.token'))
+  assert.ok(body.value.projection.truncated_fields.includes('$.description'))
+  assert.ok(!result.text.includes(TOKEN))
+  const failed = await execute(f.ctx, f.client, f.sources, current, { async status() {
+    const error = new Error(`原生目录读取失败 Bearer ${TOKEN}`)
+    error.cause = { token: 'PRIVATE_FLOW_CAUSE' }
+    throw error
+  } })
+  assert.equal(unpack(failed).ok, false)
+  assert.doesNotMatch(failed.text, /PRIVATE_FLOW_CAUSE/)
+  assert.ok(!failed.text.includes(TOKEN))
+  assert.match(unpack(failed).error, /原生目录读取失败/)
+})

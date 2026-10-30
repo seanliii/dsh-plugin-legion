@@ -54,7 +54,7 @@ After enabling the connector in DSH Plugins, open **Legion** in the sidebar and 
 
 | 页面 / Page | 操作与边界 / Actions and limits |
 |---|---|
-| **我的军团 / My Legion** | **刷新成员 / Refresh members** 看核心观察；勾选可选执行成员后 **保存选择 / Save selection**。**交给军团选人 / Let Legion choose** 清空候选草稿，仍需保存。Writes the profile's `candidateHarnesses` preference, not an installation or permission grant. Empty candidates let Legion choose; unknown installation/connection/verification states remain unknown. |
+| **我的军团 / My Legion（0.5.0 开发版）** | **选战友 → 定协作 → 自动变强 → 组建战队并自动开工**。通过原生配置保存默认偏好，并通过 DSH schedule 安排首次与默认每周任务；状态、原会话入口、暂停和恢复见[自动流程](TEAM.md)。Uses native configuration and scheduling, not another agent loop. Selection is not installation; delivery is not completed improvement. |
 | **找能力 / Discover** | 查 **本会话工具 / Skill**、**GitHub**、**DSH 插件市场**。Search current session tools/Skills, public GitHub or configured DSH market indexes. No Legion core or token is required; discovery does not execute tools. |
 | **添加能力 / Add capabilities** | **安装现成 DSH 包 / Install an existing DSH bundle** 与 **交给军团接入 / Delegate integration** 分开。Install a reviewed bundle through the official manager, or send an editable goal to the configured core/models. Reading a repository does not install or submit it. |
 | **接入任务 / Integration tasks** | **刷新任务列表 / Refresh tasks** 读本地恢复索引；**读取实时进度 / Read live progress** 才向核心查状态。The list is scoped to the selected session and authenticated identity, not a live feed. Formal downloads reuse `/legion download` and save on the DSH Host, not automatically in the browser's Downloads folder. Continuation, feedback and cancellation use `/legion` in the original conversation. |
