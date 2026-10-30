@@ -1,0 +1,44 @@
+{
+  "format": 1,
+  "title": {
+    "en": "Legion capability index",
+    "zh": "军团能力索引"
+  },
+  "description": {
+    "en": "Maintainer-published native DSH bundles. Review pinned sources before installing.",
+    "zh": "由项目维护者发布的 DSH 原生能力包索引；安装前可核对固定来源。"
+  },
+  "plugins": [
+    {
+      "name": "dsh-plugin-legion",
+      "title": {
+        "en": "Legion · an ecosystem of capabilities",
+        "zh": "军团 · 接入整个能力生态"
+      },
+      "description": {
+        "en": "Discover tools, Skills and GitHub projects in a five-page native workbench. Connect the separately installed public Legion core for collaboration and artifact delivery. External members and models are configured on demand.",
+        "zh": "原生五页工作台：发现工具、Skill 与 GitHub 项目；接入独立公开军团核心，协作并交付文件。外部成员和模型按需配置，不会自动全部安装。"
+      },
+      "icon": "icon.svg",
+      "author": "seanliii",
+      "homepage": "https://github.com/seanliii/dsh-plugin-legion#readme",
+      "repository": {
+        "url": "https://github.com/seanliii/dsh-plugin-legion"
+      },
+      "versions": [
+        {
+          "version": "0.4.2",
+          "publishTimestamp": 1793328416,
+          "source": {
+            "type": "git",
+            "url": "https://github.com/seanliii/dsh-plugin-legion.git",
+            "commit": "7ca96434ee077102d2e2459173fffa91747898b5"
+          },
+          "engines": {
+            "dsh": "0.2.1-rc.2"
+          }
+        }
+      ]
+    }
+  ]
+}
