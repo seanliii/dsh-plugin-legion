@@ -8,18 +8,17 @@ The user provides a goal. The team researches, organizes itself, uses each other
 
 **DSH is an entry point; the co-evolving team is the product.** Plugin discovery, GitHub integration and core configuration support that team rather than define the whole vision. The [product definition and verified scope](docs/ECOSYSTEM.md#co-evolving-team) remain separate: installation and connection checks do not establish full collective autonomy or co-evolution.
 
-**Connector 0.4.2 is public and has been installed, enabled and connected through the native DSH UI.** The [public Legion core v0.1.0](https://github.com/seanliii/meyo-legion-core/releases/tag/v0.1.0) is installed separately. Its first-party source is MIT, it remains a **technical preview**, and third-party licenses are retained.
+**[Connector 0.5.0 is public](https://github.com/seanliii/dsh-plugin-legion/releases/tag/v0.5.0): set up the team once, then start automatically.** The [public Legion core v0.1.0](https://github.com/seanliii/meyo-legion-core/releases/tag/v0.1.0) is installed separately. Its first-party source is MIT, it remains a **technical preview**, and third-party licenses are retained.
 
-**Current development version 0.5.0: set up the team once, then start automatically.**
 Choose companions and a collaboration style; improvement defaults to on. Submitting schedules
 the first round and weekly follow-ups through native DSH, with pause and original-conversation
-entry points. See the [workflow and boundaries](docs/TEAM.md). Older `v0.4.2` evidence, public
-tags and market entries are not evidence that this new version has shipped or improved a model.
+entry points. See the [workflow and boundaries](docs/TEAM.md). Scheduling, model execution and
+verified improvement remain separate. Users configure their own models and accounts; no shared credentials are included.
 
 ## Get started
 
-1. Install through [**DSH Discover**](docs/MARKET.md#官方-discover-索引) or the [fixed Git command](docs/MARKET.md#v042), then explicitly enable Legion. Neither route requires publishing this connector to npm.
-2. On the current development version, open **Legion**, choose a **Working session**, then follow **Companions → Collaboration → Grow together**. You may also use **Discover** directly; tools, Skills and public GitHub search need no Legion core. The older public release retains its original member page.
+1. Install through [**DSH Discover**](docs/MARKET.md#官方-discover-索引) or the [fixed Git command](docs/MARKET.md#v050), then explicitly enable Legion. Neither route requires publishing this connector to npm.
+2. Open **Legion**, choose a **Working session**, then follow **Companions → Collaboration → Grow together**. You may also use **Discover** directly; tools, Skills and public GitHub search need no Legion core.
 3. For delegated work, [download and verify core v0.1.0](docs/CORE.md#public-core-install), create a fresh Python 3.12 environment, then follow **`init` → `serve` → `dsh-config` → Save connection**. Configure your own model before submitting work; the connector does not bundle or start the core.
 
 Try an ordinary DSH request:
@@ -28,7 +27,7 @@ Try an ordinary DSH request:
 Find an existing plugin for the capability I need. Show its sources and limitations before installing anything.
 ```
 
-[Post-release receipts on GitHub main](https://github.com/seanliii/dsh-plugin-legion/blob/main/docs/PLAN.md#v042) · [Limits, data and license](#limits-data-and-license)
+[Post-release receipts on GitHub main](https://github.com/seanliii/dsh-plugin-legion/blob/main/docs/PLAN.md#v050) · [Limits, data and license](#limits-data-and-license)
 
 ## What you can do
 
@@ -73,7 +72,20 @@ This is a parameter template, not a published package address. For public pinned
 
 Host plugins run **outside the agent sandbox**. Review code and dependencies before trusting them; see [Security](docs/SECURITY.md).
 
-### Fixed-version Git installation — v0.4.2
+### Fixed-version Git installation — v0.5.0
+
+Requires Node.js >=24.9.0 and DSH `0.2.1-rc.2`. Replace the example `web` profile if needed and retain `-w`:
+
+```sh
+dsh plugin --profile web -w add 'github:seanliii/dsh-plugin-legion#v0.5.0'
+```
+
+Pinned source: `090c82e273dcbf4912ab48906bf28f9f086ae53d`. The release retains the reviewed 32-file
+package and its checksum. Explicitly enable Legion in DSH Plugins after installation.
+Post-release documentation on `main` does not move the tag or replace release bytes; “development”
+wording in the frozen archive records its pre-publication state. See [0.5.0 installation and verification](docs/MARKET.md#v050).
+
+### Fixed-version Git installation — v0.4.2 (historical)
 
 This edition uses Git, not npm publication. Replace the example `web` profile as needed and retain `-w`:
 

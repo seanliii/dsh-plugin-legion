@@ -1,8 +1,8 @@
 {
   "format": 1,
   "title": {
-    "en": "Legion capability index",
-    "zh": "军团能力索引"
+    "en": "Legion co-evolving teams",
+    "zh": "军团协同进化战队"
   },
   "description": {
     "en": "Maintainer-published native DSH bundles. Review pinned sources before installing.",
@@ -12,12 +12,12 @@
     {
       "name": "dsh-plugin-legion",
       "title": {
-        "en": "Legion · an ecosystem of capabilities",
-        "zh": "军团 · 接入整个能力生态"
+        "en": "Legion · a co-evolving harness team",
+        "zh": "军团 · Harness 协同进化战队"
       },
       "description": {
-        "en": "Discover tools, Skills and GitHub projects in a five-page native workbench. Connect the separately installed public Legion core for collaboration and artifact delivery. External members and models are configured on demand.",
-        "zh": "原生五页工作台：发现工具、Skill 与 GitHub 项目；接入独立公开军团核心，协作并交付文件。外部成员和模型按需配置，不会自动全部安装。"
+        "en": "Choose companions and collaboration style, then start native DSH initial and weekly work for discovery, cooperation and improvement. Includes durable recovery, pause, shared tools and source adaptation. Users configure their own models and optional Legion core; scheduling is not proof of improvement.",
+        "zh": "选择战友与协作方式，一次组队自动开启首轮和每周发现、协作与改进。提供持久恢复、暂停、开放工具和源码适配；使用自己的模型及按需安装的军团核心，任务安排不冒充改进成功。"
       },
       "icon": "icon.svg",
       "author": "seanliii",
@@ -26,6 +26,18 @@
         "url": "https://github.com/seanliii/dsh-plugin-legion"
       },
       "versions": [
+        {
+          "version": "0.5.0",
+          "publishTimestamp": 1793358402,
+          "source": {
+            "type": "git",
+            "url": "https://github.com/seanliii/dsh-plugin-legion.git",
+            "commit": "090c82e273dcbf4912ab48906bf28f9f086ae53d"
+          },
+          "engines": {
+            "dsh": "0.2.1-rc.2"
+          }
+        },
         {
           "version": "0.4.2",
           "publishTimestamp": 1793328416,

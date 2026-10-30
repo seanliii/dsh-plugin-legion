@@ -8,17 +8,17 @@
 
 **DSH 是入口，协同进化的战队才是产品。** 找插件、接 GitHub、配置核心是支撑这支战队的方法，不是军团的全部理念。[产品定义与现状边界](docs/ECOSYSTEM.md#co-evolving-team)分开陈述；下方已验证的安装与连接不代表这个目标已经全部实现。
 
-**连接器 0.4.2 已公开，并已从 DSH“发现”页实际安装、启用和连接核心。** [公开核心 v0.1.0](https://github.com/seanliii/meyo-legion-core/releases/tag/v0.1.0) 另行安装，第一方采用 MIT，第三方原许可保留，当前为**技术预览**。
+**连接器 [0.5.0 已公开](https://github.com/seanliii/dsh-plugin-legion/releases/tag/v0.5.0)：一次组队，自动开工。** [公开核心 v0.1.0](https://github.com/seanliii/meyo-legion-core/releases/tag/v0.1.0) 另行安装，第一方采用 MIT，第三方原许可保留，当前为**技术预览**。
 
-**当前开发版 0.5.0：一次组队，自动开工。** 先选战友，再定协作方式；自主改进默认开启，
+先选战友，再定协作方式；自主改进默认开启，
 保存后由 DSH 原生任务启动第一轮、默认每周继续，并提供暂停和原会话结果入口。
-[完整流程与边界](docs/TEAM.md)。这是新版本源码功能，不能把旧 `v0.4.2` 安装证据挪作
-新版执行效果，公开固定标签与市场条目也不会被本文自动更新。
+[完整流程与边界](docs/TEAM.md)。任务安排、模型实际执行、改进有效分别核验；
+用户需配置自己的模型与账号，安装包不提供共享密钥。
 
 ## 立即开始
 
-1. 用[**DSH“发现”页安装**](docs/MARKET.md#官方-discover-索引)，或按[固定 Git 命令](docs/MARKET.md#v042)安装，然后明确启用 Legion。两条路线都不要求本插件先发布到 npm。
-2. 使用当前开发版时，打开侧栏 **军团**，选择 **当前工作会话**，按 **选战友 → 定协作 → 自动变强**完成组队。也可直接进入 **找能力**；查工具、Skill 和公开 GitHub 不需要军团核心。旧公开版仍使用原成员页。
+1. 用[**DSH“发现”页安装**](docs/MARKET.md#官方-discover-索引)，或按[固定 Git 命令](docs/MARKET.md#v050)安装，然后明确启用 Legion。两条路线都不要求本插件先发布到 npm。
+2. 打开侧栏 **军团**，选择 **当前工作会话**，按 **选战友 → 定协作 → 自动变强**完成组队。也可直接进入 **找能力**；查工具、Skill 和公开 GitHub 不需要军团核心。
 3. 需要委托工作时，[下载并核对核心 v0.1.0](docs/CORE.md#public-core-install)，建立 Python 3.12 全新环境，再按 **`init` → `serve` → `dsh-config` → 插件保存连接**接入；实际派单前配置本人模型。核心不随连接器打包或启动。
 
 可以在普通 DSH 对话里说：
@@ -27,7 +27,7 @@
 帮我找能完成这件事的现成插件。先给来源和限制，不要安装。
 ```
 
-[发布后回执：GitHub main](https://github.com/seanliii/dsh-plugin-legion/blob/main/docs/PLAN.md#v042) · [限制、数据与许可](#限制数据与许可)
+[发布后回执：GitHub main](https://github.com/seanliii/dsh-plugin-legion/blob/main/docs/PLAN.md#v050) · [限制、数据与许可](#限制数据与许可)
 
 ## 可以做什么
 
@@ -72,7 +72,19 @@
 
 Host 插件在 **agent 沙箱之外运行**，启用前须信任实际代码与依赖。详见[安全说明](docs/SECURITY.md)。
 
-### 固定版本 Git 安装：v0.4.2
+### 固定版本 Git 安装：v0.5.0
+
+需要 Node.js >=24.9.0 和 DSH `0.2.1-rc.2`。`web` 是示例 profile，保留 `-w`：
+
+```sh
+dsh plugin --profile web -w add 'github:seanliii/dsh-plugin-legion#v0.5.0'
+```
+
+固定源码为 `090c82e273dcbf4912ab48906bf28f9f086ae53d`；发行附件保持本次受审的
+32 个文件与 SHA-256。安装后在 DSH 插件页明确启用。当前 `main` 的后验说明不会移动标签，
+也不会替换原包；发行包内“开发版”字样记录封包时点。详见[0.5.0 安装与验证](docs/MARKET.md#v050)。
+
+### 固定版本 Git 安装：v0.4.2（历史版本）
 
 本版采用 Git，不做 npm 发布。`web` 是示例 profile，换成自己的名称，保留 `-w`：
 
