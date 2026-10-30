@@ -2,6 +2,8 @@
 
 **定位：让任何顶尖 Harness 都能组成战队，协同为用户干活，开放工具与能力，在真实工作中互相进化。** DSH 插件是入口，独立核心是运行底座，Harness 战队才是研究、组织、实现、检查和改进的主体。
 
+从[产品定位与现状](PRODUCT.md)开始看：同一个目标、成员互用工具、有效改进在团队中传播。以下保留机制、接口与历史细节；不是要求用户先理解全部工具菜单。
+
 <a id="co-evolving-team"></a>
 
 ## 产品定义：不是工具箱，是共同进化的战队
@@ -30,11 +32,26 @@
 
 **安装与连接只是基础条件。** 要证明这套理念落地，必须能看到同一真实任务中成员互相补位、实际使用对方的能力、共同交付，以及改进被另一个成员或后续任务实际采用。成员数量、工具数量、消息数量、绿测和新装录屏都不能代替这些事实。
 
+## 当前版本与历史范围
+
+**0.5.0（已公开）：原生组队与单作者交付。** 原生组队、自动工作、恢复以及单 DSH 作者工具交付保留在该版的[历史记录](PLAN.md#v050)。那轮没有成员评审或改进传播，不代表后来没有发生协作。核心仍是独立安装的公开 v0.1.0，产品总体保持技术预览。
+
+**0.5.1：成员事实、战队概览与成员分页。** DSH 作者模型与核心成员分别呈现。本轮已跑通 DSH 委托核心 Codex 独立源码评审、再由 DSH 逐项独立复现并采纳三个 P2 的限定双 Harness 协作；随后由 DSH 在隔离副本实施修复并回归，操作者按基准 hash 合回且独立复跑。不是无需监督的自动进化。详见[协作证据与发行状态](PLAN.md#v051)。
+
+这轮有维护者修正启动通路和授权接续，不是无人自治；核心只交审查文字，DSH 的可见抄录未匹配原 `final_ref` hash，不是正式文件导出或 hash 核验通过。反馈采用已经发生，全团工具互用、改进自动传播与普遍行业领先仍未证明。[完整范围](PRODUCT.md)
+
+<details>
+<summary>保留的 0.4.2 分发与验收记录（历史，不是当前发行状态）</summary>
+
+以下为 0.4.2 当时的范围和目录审核记录；原提交、标签、许可与验收归属保持不变。
+
 **本版 0.4.2 的分发结构：DSH 插件 → 独立军团核心 → 按需成员与能力。** 这描述怎么安装，不替代上面的产品目标。先按[Git 安装说明](MARKET.md#v042)启用入口，需要委托工作时再用[公开核心 v0.1.0](CORE.md#public-core-install)建立实例；当前实现与缺口按版本核对。
 
 **Edition 0.4.2 connects DSH to the separately installed, public core v0.1.0 technical preview.** The first-party core, selected auto-tools, packager and documentation are MIT; third-party licenses remain intact. The initial public source snapshot contains no private history. Post-release installation and runtime receipts belong on [GitHub main](https://github.com/seanliii/dsh-plugin-legion/blob/main/docs/PLAN.md#v042), not retroactively in frozen tag documentation.
 
 **0.4.2 已公开，固定 Git 索引也已发布并通过 DSH“发现”页真实安装。** 新 profile 已启用工作台、保存独立核心连接，页面刷新与双方服务重启后配置仍保留；具体范围见[版本记录](PLAN.md#v042)。社区目录 PR #748 的文件已更新，仍待维护者合入；这与原生 Discover 安装是两回事。未做 npm publish，也不声称 1024Store 已有安装按钮。[0.4.1](PLAN.md#v041)、[0.4.0](PLAN.md#v040)与旧核心记录保持原版本和 hash。
+
+</details>
 
 ## 先回答最容易混淆的三个问题
 
@@ -57,7 +74,7 @@ After enabling the connector in DSH Plugins, open **Legion** in the sidebar and 
 | **我的军团 / My Legion（0.5.0）** | **选战友 → 定协作 → 自动变强 → 组建战队并自动开工**。通过原生配置保存默认偏好，并通过 DSH schedule 安排首次与默认每周任务；状态、原会话入口、暂停和恢复见[自动流程](TEAM.md)。Uses native configuration and scheduling, not another agent loop. Selection is not installation; delivery is not completed improvement. |
 | **找能力 / Discover** | 查 **本会话工具 / Skill**、**GitHub**、**DSH 插件市场**。Search current session tools/Skills, public GitHub or configured DSH market indexes. No Legion core or token is required; discovery does not execute tools. |
 | **添加能力 / Add capabilities** | **安装现成 DSH 包 / Install an existing DSH bundle** 与 **交给军团接入 / Delegate integration** 分开。Install a reviewed bundle through the official manager, or send an editable goal to the configured core/models. Reading a repository does not install or submit it. |
-| **接入任务 / Integration tasks** | **刷新任务列表 / Refresh tasks** 读本地恢复索引；**读取实时进度 / Read live progress** 才向核心查状态。The list is scoped to the selected session and authenticated identity, not a live feed. Formal downloads reuse `/legion download` and save on the DSH Host, not automatically in the browser's Downloads folder. Continuation, feedback and cancellation use `/legion` in the original conversation. |
+| **战队任务 / Team tasks** | **刷新任务列表 / Refresh tasks** 读本地恢复索引；**读取实时进度 / Read live progress** 才向核心查状态。The list is scoped to the selected session and authenticated identity, not a live feed. Formal downloads reuse `/legion download` and save on the DSH Host, not automatically in the browser's Downloads folder. Continuation, feedback and cancellation use `/legion` in the original conversation. |
 | **连接与配置 / Connection** | 修改地址、环境变量名或令牌文件路径，点 **保存连接配置 / Save connection**。Native configuration saves reload the connector and end local waits, not remote tasks. The page never reads or shows token-file contents. |
 
 成员选择与连接配置、整包与子插件开关都作用于当前 **DSH profile**，不是仅影响所选会话。配置保存使用原生 revision；只读或冲突时重新读取，不强行覆盖。保存成功只说明配置被接受，不说明模型已能工作。

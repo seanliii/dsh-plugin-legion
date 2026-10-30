@@ -59,13 +59,13 @@ discover／source／bundle／call 不是 `/legion` 的位置参数子命令；�
 
 | `action` | `args` 与边界 | 复用入口 |
 |---|---|---|
-| `runtime` | 必填 `view: "members"`、`"capabilities"` 或 `"catalog"`；本命令不设默认 view。 | `client.runtime` |
+| `runtime` | 必填 `view: "members"`、`"capabilities"` 或 `"catalog"`；本命令不设默认 view。仅 members 支持 `offset`（默认 0）和 `limit`（默认 12，1–30）。 | `client.runtime`；分页仅在工作台投影处理，不向核心虚构筛选参数 |
 | `tools` | 可选 `query`（最多 500 字符，允许空）、`offset`（默认 0）、`limit`（1–30，默认 10）；数值必须是非负／范围内安全整数。 | `ctx.tools.schemas(invocation.agent)`，只读当前 Agent 元数据 |
 | `github` | 非空 `query`，最多 2048 字符；可选 `limit` 为 1–100，默认 5。仅第一页，不接受 offset。 | `sources.search` |
 | `inspect` | 非空 `repository`，最多 256 字符；可选非空 `ref`，最多 1024 字符。仓库／ref 语法和公开来源规则由 `GitHubSources` 继续校验。 | `sources.inspect`，再作窄投影 |
-| `tasks` | 无参数；省略 `args` 或传 `{}`。 | `client.list` |
-| `status` | 必填 `task_ref`，恰为 32 位小写十六进制；不支持省略、`latest` 或事件／消息游标参数。 | `client.status` |
-| `submit` | 非空 `key`（最多 160 字符）、`query`（最多 100000 字符）；可选文本 `context`（最多 200000 字符，允许空）。 | `client.submit`，保留原 key 去重／恢复 |
+| `tasks` | 可选 `offset`（默认 0）、`limit`（默认 30，1–30）、`snapshot`。后页必须带首读返回的快照。 | `client.list`，仅恢复索引；不查询／派发模型任务 |
+| `status` | 必填 `task_ref`，恰为 32 位小写十六进制；可选非负 `after_event_id`、`after_message_id`、`artifact_offset`；不支持省略 task_ref 或 `latest`。 | `client.status`，成果分页在工作台投影处理 |
+| `submit` | 非空 `key`（最多 160 字符）、`query`（最多 100000 字符）；可选文本 `context`（最多 200000 字符，允许空）和原生索引返回的 `connection_id`。 | `client.submit`，保留原 key 去重／恢复；连接比较不是身份授权 |
 | `flow_status`／`flow_start`／`flow_pause`（0.5.0） | 无附加字段；身份仅来自原生会话。 | 原生计划查询、安排／核对与暂停，不调用外部模型或核心。 |
 | `flow_run`（0.5.0） | 非空 `key`（最多 128 字符）；重试同一操作保留原 key。 | 通过原生调度安排明确的新一轮，不是重建任务执行器。 |
 
@@ -78,7 +78,7 @@ discover／source／bundle／call 不是 `/legion` 的位置参数子命令；�
 | 我的军团 / My Legion | `runtime` 的 members 观察；原生配置保存 `candidateHarnesses`／`teamProfile`，随后 `flow_start` 安排工作。`flow_status/pause/run` 查询、暂停和再跑；配置、投递和模型执行分开。 |
 | 找能力 / Discover | `tools`／`github`；Skill 列表走原生 `skills`，市场走原生 `pluginMarket` 的已配置索引。Skill 是指导，不是新增工具。 |
 | 添加能力 / Add capabilities | `inspect` 准备来源事实，明确委托才 `submit`；检查、安装和开关走官方 `pluginManager`，不是新增 panel 动作。 |
-| 接入任务 / Integration tasks | `tasks` 读本地索引，`status` 主动读实时观察；不自动轮询或执行来信。 |
+| 战队任务 / Team tasks | `tasks` 读本地索引，`status` 主动读实时观察；不自动轮询或执行来信。 |
 | 连接与配置 / Connection | 原生配置表单读写地址与凭据引用，不经命令 JSON 传凭据；成员候选在我的军团页保存。 |
 
 `tools`、`github`、`inspect` 不要求 Legion 核心或 token；Skill、市场和安装使用主机实际提供的服务，缺少服务不绕过。`runtime`／`status`／`submit` 使用已配置核心与身份；`tasks` 虽不发 HTTP，也要通过当前凭据、身份与生命周期检查。切换工作会话改变工具和任务上下文，不把同 profile 的配置／能力包开关变成会话私有。下载、反馈、续作、恢复和远端取消仍用原对话的 `/legion` 或相应模型工具，工作台不另增这些动作。操作说明见[五页工作台](ECOSYSTEM.md#native-workbench)。
@@ -109,6 +109,24 @@ discover／source／bundle／call 不是 `/legion` 的位置参数子命令；�
 ### Bounded workbench output / 工作台有限投影
 
 - `client.clean`／`redactText` 先清理，再按 UTF-8 边界截短。整个 `text` JSON 上限 **64 KiB**；普通数据投影预算 40 KiB，单段文本 4096 字节，每个数组至多 100 项、对象至多 100 字段、深度上限 8。最终仍超限时返回 `kind: "error"`，带 `diagnostics.truncated: true`，不截破 JSON 或换成看似完整的空成功。
+- **0.5.1 成员专用投影**：工作台从完整脱敏成员响应中按调用开始时的候选快照提取 `selected`，
+  不先截目录再找人；成员页和候选摘要各保留 16 KiB 独立预算。`runtime.harnesses` 仍是原嵌套行形状的
+  精简数据，优先保留 `model.configured/configuration_error/provider_verified`、
+  `readiness.verified/historical_verified` 和 `entry_points.execution`；预热、缓存与公开目录标记单独保留。
+  `selected` 包含 `mode/items/total/shown_count/complete`，未观察到的 key 返回 `observed:false`，
+  不填假的未安装／失败状态。`member_page` 包含 `offset/limit/total/shown_count/next_offset/complete`；
+  字节预算不足时整行缩页，`next_offset` 只越过实际返回的记录，身份 key 不截短。
+  `complete` 表示投影完整性，不表示可执行；是否有后页看 `next_offset`。元数据与省略路径仍受总输出上限约束。
+  仅工作台命令使用该投影，模型工具 `legion_runtime` 与原 `/legion runtime` 的既有契约不变。
+- **0.5.1 任务列表**：`tasks` 返回最多 30 条、16 KiB 整行预算的当前页，以及
+  `task_page.{available,total,shown_count,offset,limit,next_offset,snapshot,source_complete,complete}`。
+  快照来自完整脱敏索引与连接身份；后页快照不匹配时明确要求刷新第一页，不把不同版本的列表拼起来。
+  非法引用保留为不可用记录，缺失索引、读取失败、截断与已确认的空列表分别显示。
+  这是本会话的恢复索引，不是实时成员活动流。
+- **提交回执归属**：浏览器按原生连接标识与会话保存未确认操作；切换连接仅隐藏旧操作，不删除原 key。
+  `connection_id` 是既有服务／认证凭据／索引绑定的不可读比较值，不是令牌、授权或远端稳定用户 ID。
+  工作台在真正提交前核对当前绑定；该字段不会转交给核心当授权。
+  新客户端需要同版 Host 配套；旧模型工具与不带 `connection_id` 的既有命令契约不变。
 - `projection` 保留 `omitted_fields`、`truncated_fields` 及去重后的 `omitted_fields_count`、`truncated_fields_count`，附 `limits`。每类至多展示 64 条路径、每条至多 160 字节，路径元数据总预算 16 KiB；有省略时标 `paths_truncated`。路径本身也脱敏。
 - `tools` 只保留 `name`、最多 1024 字节的 `description`；名称超过 1024 字节直接报错，不造一个截短的可调用名称。按名字／描述匹配查询词并分页；`total` 是匹配总数，`next_offset` 按实际返回行数前进。工具页数据预算为 38 KiB，未显示的字段／行明确记录；只读元数据，`execution_performed: false`、`grants_remote_access: false`。
 - `inspect` 保留固定 repository／commit／URL、真实 metadata／license 字段、README 事实及最多 **1200 字节**正文、manifest 路径与文件事实、目录摘要、errors 和来源。不返回完整目录 `entries`，不复制 manifest 或许可证正文；README 标 `content_preview: true`。`source_truncated` 保留来源原始截断值，`source_preview` 内的 offset／字节数属于来源读取页，**不是清理后的 UI 正文字节数**。
