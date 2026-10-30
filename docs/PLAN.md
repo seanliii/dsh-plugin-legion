@@ -12,6 +12,11 @@
 
 ## 0.5.1：看清战队，把同伴发现带回产品
 
+**2026-10-30 22:51:02（Asia/Shanghai）已发布。** 固定源码 `cb3eca2108d09456a2cbb973afe5da7406c0cf06`，
+原 TGZ **533,838 字节、34 文件**，SHA-256
+`d09e54ca4b3909a0ce7b30ffd4ae9fe490f596ff9015468cddfcdfb703dfdfed`。
+原包、SHA256SUMS 与隐私审查后的工作台对比录屏见 [Release](https://github.com/seanliii/dsh-plugin-legion/releases/tag/v0.5.1)。
+
 **主叙事：集结顶尖 Harness，共同进化，对标世界级成果。** 对标是从真实参照中发现差距，
 不是给本次发布颁发“世界级”称号。完整理念见 [PRODUCT](PRODUCT.md)。
 
