@@ -10,10 +10,16 @@ The user provides a goal. The team researches, organizes itself, uses each other
 
 **Connector 0.4.2 is public and has been installed, enabled and connected through the native DSH UI.** The [public Legion core v0.1.0](https://github.com/seanliii/meyo-legion-core/releases/tag/v0.1.0) is installed separately. Its first-party source is MIT, it remains a **technical preview**, and third-party licenses are retained.
 
+**Current development version 0.5.0: set up the team once, then start automatically.**
+Choose companions and a collaboration style; improvement defaults to on. Submitting schedules
+the first round and weekly follow-ups through native DSH, with pause and original-conversation
+entry points. See the [workflow and boundaries](docs/TEAM.md). Older `v0.4.2` evidence, public
+tags and market entries are not evidence that this new version has shipped or improved a model.
+
 ## Get started
 
 1. Install through [**DSH Discover**](docs/MARKET.md#官方-discover-索引) or the [fixed Git command](docs/MARKET.md#v042), then explicitly enable Legion. Neither route requires publishing this connector to npm.
-2. Open **Legion** in the sidebar, choose a **Working session**, and start with **Discover**. Searching tools, Skills and public GitHub needs no Legion core.
+2. On the current development version, open **Legion**, choose a **Working session**, then follow **Companions → Collaboration → Grow together**. You may also use **Discover** directly; tools, Skills and public GitHub search need no Legion core. The older public release retains its original member page.
 3. For delegated work, [download and verify core v0.1.0](docs/CORE.md#public-core-install), create a fresh Python 3.12 environment, then follow **`init` → `serve` → `dsh-config` → Save connection**. Configure your own model before submitting work; the connector does not bundle or start the core.
 
 Try an ordinary DSH request:
@@ -99,7 +105,7 @@ After installing and enabling the connector in **DSH Plugins**, open **Legion** 
 
 | Page | What to do | What it means |
 |---|---|---|
-| **My Legion** | **Refresh members**, select eligible members, then **Save selection**. Or click **Let Legion choose**, then save. | Saves `candidateHarnesses` for this connector's profile. Empty candidates let Legion choose; selection neither installs members nor grants permissions. Installation, connection and service-reported verification stay separate. |
+| **My Legion (0.5.0)** | **Companions → Collaboration → Grow together → Form team and start automatically**. Inspect schedules, open results, run again or pause. | Saves native `candidateHarnesses` and `teamProfile`, schedules the first round and defaults to weekly follow-ups. Selection is not installation; scheduling and delivery do not prove completed improvement. |
 | **Discover** | Search **Session tools / Skills**, **GitHub**, or **DSH plugin market**. | Tools are those visible to the selected session's Agent; Skills are guidance. Only configured market indexes are searched. No core is required, and discovery executes no tools. |
 | **Add capabilities** | Inspect and explicitly install an existing DSH bundle, or edit a goal and **Delegate integration**. | Native package management and model-led adaptation are different operations; reading a repository does neither automatically. |
 | **Integration tasks** | **Refresh tasks**, then **Read live progress**; inspect export records and use **Download file** where available. | The list is this session and identity's local recovery index, not a live feed. Runtime, artifacts, refusal reasons and pagination are shown separately; incomplete data is not zero artifacts. `done` is not a usable-result guarantee. |
