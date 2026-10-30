@@ -297,3 +297,111 @@ test('a configured unsafe token file fails closed at use, never using an old cli
   assert.equal((await f.host.tool()).isError, false)
   assert.equal(f.a.requests.at(-1).authorization, 'Bearer fixture-identity-B')
 })
+
+test('team wiring: official settings exposes a twice-rehydratable nested team form without opting in old configurations',
+  { timeout: 10000 }, async t => {
+    const f = await setup(t)
+    const view = f.host.describe()
+    assert.equal(view.value.teamProfile, undefined)
+    assert.ok(Object.values(view.schema.refs).every(node => node.type !== 'transform'))
+    const fields = ['name', 'goal', 'collaboration', 'leader', 'instructions', 'evolutionEnabled', 'cadence']
+    for (const schema of [new Schema(view.schema), new Schema(new Schema(view.schema).toJSON())]) {
+      const team = schema.dict.teamProfile
+      assert.ok(team, 'The official Settings form must expose teamProfile')
+      assert.equal(team.type, 'object')
+      assert.deepEqual(Object.keys(team.dict), fields)
+      assert.equal(schema(view.value).teamProfile, undefined)
+      const defaults = schema({ ...view.value, teamProfile: {} }).teamProfile
+      assert.equal(defaults.evolutionEnabled, true)
+      assert.equal(defaults.cadence, 'weekly')
+      assert.equal(defaults.collaboration, 'auto')
+      assert.equal(defaults.name, '我的战队')
+      assert.equal(defaults.goal, '让我的 DSH 和战队在真实工作中持续变强')
+      assert.throws(() => schema({ ...view.value, teamProfile: { cadence: 'hourly' } }))
+      assert.throws(() => schema({ ...view.value, teamProfile: { evolutionEnabled: 'false' } }))
+    }
+  })
+
+test('team wiring: official settings atomically saves profile and candidates, reloads submit wiring and preserves recovery on reboot',
+  { timeout: 10000 }, async t => {
+    const f = await setup(t)
+    const args = { key: 'before-configured-team', query: 'Original current task', context: 'Explicit original context' }
+    const original = await f.host.tool('submit', args)
+    assert.equal(original.value.submission, 'accepted')
+    let catalogReads = 0
+    f.host.ctx.provide('schedule', {
+      async catalog() { catalogReads++; return [] },
+      async create() { assert.fail('Saving configuration alone must not schedule work') },
+    })
+    const teamProfile = {
+      name: '设置测试战队', goal: '用户保存的真实目标', collaboration: 'leader',
+      leader: 'member-a', instructions: '一起核实当前问题', evolutionEnabled: false, cadence: 'manual',
+    }
+    const changed = await f.host.mutate([
+      { op: 'set', path: ['candidateHarnesses'], value: ['member-b', 'member-a'] },
+      { op: 'set', path: ['teamProfile'], value: teamProfile },
+    ], f.host.describe().revision)
+    assert.deepEqual(changed.value.teamProfile, teamProfile)
+    assert.deepEqual(changed.value.candidateHarnesses, ['member-b', 'member-a'])
+    assert.equal(catalogReads, 0)
+    const count = f.a.requests.length
+    const reusedOldInput = await f.host.tool('submit', args)
+    assert.equal(reusedOldInput.isError, true)
+    assert.equal(f.a.requests.length, count, 'A changed profile cannot reuse old input or silently redispatch')
+    const followup = await f.host.tool('submit', {
+      ...args, key: 'configured-team-followup', previous_task_ref: original.value.task_ref,
+    })
+    assert.equal(followup.value.submission, 'accepted')
+    assert.equal(followup.value.session_id, original.value.session_id)
+    const request = f.a.requests.at(-1).body
+    assert.ok(request.question.startsWith(args.query))
+    assert.ok(request.question.includes(args.context))
+    assert.ok(request.question.includes(teamProfile.goal))
+    assert.ok(request.question.includes(teamProfile.instructions))
+    assert.deepEqual(request.plan, { team_policy: { candidate_harnesses: ['member-b', 'member-a'] } })
+    assert.equal(request.mode, 'auto')
+    assert.equal(Object.hasOwn(request, 'teamProfile'), false)
+    assert.equal(catalogReads, 0)
+    const same = await f.host.update({ teamProfile }, changed.revision)
+    assert.equal(same.revision, changed.revision)
+    await f.host.close()
+    const rebooted = await f.boot()
+    assert.deepEqual(rebooted.describe().value.teamProfile, teamProfile)
+    assert.deepEqual(rebooted.describe().value.candidateHarnesses, ['member-b', 'member-a'])
+    const beforeReplay = f.a.requests.length
+    const replay = await rebooted.tool('submit', {
+      ...args, key: 'configured-team-followup', previous_task_ref: original.value.task_ref,
+    })
+    assert.equal(replay.value.reused, true)
+    assert.equal(replay.value.task_ref, followup.value.task_ref)
+    assert.equal(f.a.requests.length, beforeReplay)
+    const persisted = await readFile(f.profile.patchPath, 'utf8')
+    assert.ok(persisted.includes('用户保存的真实目标'))
+    assert.ok(!persisted.includes('fixture-identity-A'))
+  })
+
+test('team wiring: official settings rejects private or malformed team configuration without partially saving candidates',
+  { timeout: 10000 }, async t => {
+    const f = await setup(t)
+    const before = await readFile(f.profile.patchPath, 'utf8')
+    const secret = 'PRIVATE_TEAM_SETTINGS_INPUT'
+    for (const teamProfile of [
+      null, [], { [secret]: secret }, { authority: secret }, { goal: null },
+      { evolutionEnabled: secret }, { cadence: secret }, { collaboration: secret },
+      { name: '\ud800' }, { collaboration: 'custom', instructions: '' },
+      { collaboration: 'leader', leader: '' },
+    ]) {
+      await assert.rejects(f.host.mutate([
+        { op: 'set', path: ['candidateHarnesses'], value: ['member-a'] },
+        { op: 'set', path: ['teamProfile'], value: teamProfile },
+      ], f.host.describe().revision), error => {
+        assert.equal(error.code, 'settings/rejected')
+        assert.ok(!error.message.includes(secret))
+        return true
+      })
+      assert.equal(await readFile(f.profile.patchPath, 'utf8'), before)
+      assert.equal(f.host.describe().value.teamProfile, undefined)
+      assert.equal(f.host.describe().value.candidateHarnesses, undefined)
+    }
+    assert.equal(f.a.requests.length, 0)
+  })

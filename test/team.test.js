@@ -173,6 +173,13 @@ test('only an explicitly selected leader may appear as the designated leader in 
   }
 })
 
+test('the native author can see which companions the user selected before delegating work', () => {
+  const { teamContext } = teamApi()
+  const context = teamContext({}, ['member-b', 'member-a'])
+  assert.ok(context.includes('["member-b","member-a"]'), 'Do not hide the selected team behind an unexplained reference')
+  assert.match(context, /不代表.*(?:安装|就绪)/)
+})
+
 test('empty candidates allow autonomous or custom collaboration and context stays bounded', () => {
   const { teamContext } = teamApi()
   for (const candidates of [undefined, []]) {

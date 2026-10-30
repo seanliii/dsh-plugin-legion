@@ -3,6 +3,7 @@ import assert from 'node:assert/strict'
 import { mkdtemp, rm, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
+import Schema from '@deepseek-ai/schemastery'
 import { Context } from '@deepseek-ai/cordis'
 import { SystemPrompt } from '@deepseek-ai/dsh-system-prompt'
 import { ToolRuntime, defineTool, assertSupportedJsonSchema, validateJsonSchemaValue } from '@deepseek-ai/dsh-tools'
@@ -10,6 +11,7 @@ import { CommandRuntime } from '@deepseek-ai/dsh-commands'
 import { LegionClient } from '../lib/client.js'
 import { GitHubSources } from '../lib/sources.js'
 import { SkillRegistry } from '@deepseek-ai/dsh-skill'
+import { createAfterScheduleRecord, createEveryScheduleRecord } from '@deepseek-ai/dsh-schedule'
 
 const methods = ['submit', 'list', 'status', 'message', 'resume', 'cancel', 'download']
 const names = [...methods, 'runtime', 'discover', 'source', 'bundle', 'call'].map(method => `legion_${method}`).sort()
@@ -949,4 +951,203 @@ test('malformed operator binding is a safe error in the native tool and command 
     assert.doesNotMatch(JSON.stringify(result), /synthetic-private|Unexpected token/)
   }
   assert.equal(globalThis.fetch.mock.callCount(), 0)
+})
+
+const configuredTeam = {
+  name: '我的战队', goal: '让我的 DSH 和战队在真实工作中持续变强',
+  collaboration: 'auto', leader: '', instructions: '', evolutionEnabled: true, cadence: 'weekly',
+}
+
+test('team wiring: Config normalizes only explicitly configured teams and publishes a callback-free nested form', async () => {
+  const { Config } = await loadPlugin()
+  assert.ok(!Object.hasOwn(Config({}).get(), 'teamProfile'))
+  assert.deepEqual(Config({ teamProfile: {} }).get().teamProfile, configuredTeam)
+  const input = { teamProfile: { name: ' \u3000共同工作队 ', goal: ' 共同理解当前需求 ', evolutionEnabled: false } }
+  const expected = { ...configuredTeam, name: '共同工作队', goal: '共同理解当前需求', evolutionEnabled: false }
+  assert.deepEqual(Config(input).get().teamProfile, expected)
+  assert.deepEqual(Config['~standard'].validate(input).value.get().teamProfile, expected)
+  assert.equal(Config({ teamProfile: { name: ` ${'名'.repeat(80)} ` } }).get().teamProfile.name.length, 80)
+  const serialized = JSON.parse(JSON.stringify(Config))
+  assert.ok(Object.values(serialized.refs).every(node => node.type !== 'transform'))
+  for (const schema of [new Schema(serialized), new Schema(new Schema(serialized).toJSON())]) {
+    assert.equal(schema.dict.teamProfile.type, 'object')
+    assert.deepEqual(Object.keys(schema.dict.teamProfile.dict), Object.keys(configuredTeam))
+    assert.ok(!Object.hasOwn(schema({}).get(), 'teamProfile'), 'Rendering an old configuration must not opt it in')
+    assert.deepEqual(schema({ teamProfile: {} }).get().teamProfile, configuredTeam)
+    assert.throws(() => schema({ teamProfile: { evolutionEnabled: 'true' } }))
+    assert.throws(() => schema({ teamProfile: { cadence: 'hourly' } }))
+  }
+})
+
+test('team wiring: raw configuration rejects invalid profiles and private extras before Schemastery can erase them', async () => {
+  const { Config } = await loadPlugin()
+  const secret = 'synthetic-private-team-config'
+  for (const teamProfile of [
+    null, [], secret, { goal: null }, { evolutionEnabled: secret },
+    { cadence: secret }, { collaboration: secret }, { [secret]: secret },
+    { authority: secret }, { name: '\ud800' }, { instructions: secret.repeat(100) },
+    { collaboration: 'leader', leader: ' ' }, { collaboration: 'custom', instructions: ' ' },
+    Object.create({ goal: secret }),
+  ]) {
+    assert.throws(() => Config({ teamProfile }), error => {
+      assert.match(error.message, /teamProfile/)
+      assert.ok(!error.message.includes(secret))
+      return true
+    })
+    // Like the existing raw-key boundary, callback errors are thrown by the
+    // installed Schemastery standard adapter; native ConfigEditor catches them.
+    assert.throws(() => Config['~standard'].validate({ teamProfile }), error => {
+      assert.match(error.message, /teamProfile/)
+      assert.ok(!error.message.includes(secret))
+      return true
+    })
+  }
+  for (const extra of [{ token: secret }, { lifecycleSignal: secret }, { [secret]: secret }]) {
+    assert.throws(() => Config({ teamProfile: {}, ...extra }), error => {
+      assert.ok(!error.message.includes(secret))
+      return true
+    })
+  }
+})
+
+test('team wiring: native submit uses saved configuration while model arguments cannot supply a team or authority', async t => {
+  const plugin = await loadPlugin()
+  const calls = recordClient(t)
+  const { ctx, install } = await host(t)
+  await install(plugin, { ...isolatedConfig, teamProfile: { goal: '用户保存的目标' }, candidateHarnesses: ['member-a'] })
+  const result = await ctx.tools.execute({
+    callId: 'team-configured-submit', name: 'legion_submit',
+    arguments: { key: 'original-key', query: 'Original question', teamProfile: { goal: 'INJECTED_TEAM' }, authority: 'INJECTED_AUTHORITY' },
+    agent: { id: 'team-submit-session', ctx }, signal: new AbortController().signal,
+  })
+  assert.equal(result.isError, false)
+  assert.deepEqual(calls[0].args[0], { key: 'original-key', query: 'Original question' })
+  assert.deepEqual(calls[0].client.teamProfile, { ...configuredTeam, goal: '用户保存的目标' })
+  assert.deepEqual(calls[0].client.candidateHarnesses, ['member-a'])
+  assert.ok(ctx.tools.schemas().every(tool => !Object.hasOwn(tool.parameters.properties, 'teamProfile')))
+})
+
+// Provider boundary double; records use the installed official 0.2.1-rc.2 API.
+// Native persistence/delivery is separately verified by the team-flow author.
+function wiringSchedule() {
+  const rows = new Map()
+  const creates = []
+  let sequence = 0
+  return {
+    rows, creates,
+    async catalog() { return structuredClone([...rows.values()]) },
+    async create(sessionId, request, signal) {
+      signal.throwIfAborted()
+      creates.push({ sessionId, request: structuredClone(request), signal })
+      const id = `wiring-schedule-${++sequence}`
+      const record = request.every_seconds === undefined
+        ? createAfterScheduleRecord(id, request.prompt, request.after_seconds, Date.now(), request.title)
+        : createEveryScheduleRecord(id, request.prompt, request.every_seconds, Date.now(), request.title)
+      rows.set(id, { ...record, sessionId, status: 'active' })
+      return structuredClone(record)
+    },
+    async delete({ sessionId, id }, signal) {
+      signal.throwIfAborted()
+      if (rows.get(id)?.sessionId !== sessionId) return { id, deleted: false, code: 'schedule_not_found' }
+      rows.delete(id)
+      return { id, deleted: true }
+    },
+  }
+}
+
+test('team wiring: optional schedule is resolved at call time and native panel actions share the current Host session', async t => {
+  const plugin = await loadPlugin()
+  const { ctx, install } = await host(t, { commands: true })
+  const fiber = await install(plugin, {
+    ...isolatedConfig, candidateHarnesses: ['member-a'],
+    teamProfile: { collaboration: 'leader', leader: 'member-a', goal: '一起改善当前真实工作' },
+  })
+  const events = []
+  const agent = { id: 'team-wiring-session', ctx,
+    session: { id: 'NOT_THE_OWNER', append(type, data) { events.push({ type, data }); return events.length } } }
+  const caller = new AbortController()
+  const panel = async (action, args) => (await ctx.commands.execute(agent,
+    `/legion-panel ${JSON.stringify({ action, ...(args ? { args } : {}) })}`, [], caller.signal)).result
+  const missing = JSON.parse((await panel('flow_status')).text)
+  assert.equal(missing.ok, true)
+  assert.equal(missing.value.code, 'service_missing')
+  assert.equal(missing.value.enabled, null)
+  assert.deepEqual(ctx.tools.schemas().map(tool => tool.name).sort(), names, 'Missing schedule must not block existing tools')
+  const schedule = wiringSchedule()
+  const provider = await install({ name: 'wiring-schedule-provider', apply(scope) { scope.provide('schedule', schedule) } })
+  assert.equal(schedule.creates.length, 0, 'Neither plugin activation nor service arrival may dispatch')
+  const started = JSON.parse((await panel('flow_start')).text)
+  assert.equal(started.ok, true)
+  assert.equal(started.value.partial, false)
+  assert.equal(started.value.configured, true)
+  assert.equal(started.value.schedules.length, 2)
+  assert.equal(started.value.execution, 'not_verified')
+  assert.deepEqual(schedule.creates.map(call => call.sessionId), [agent.id, agent.id])
+  assert.equal(schedule.creates[0].request.after_seconds, 1)
+  assert.equal(schedule.creates[1].request.every_seconds, 604800)
+  assert.ok(schedule.creates.every(call => call.request.prompt.includes('一起改善当前真实工作')
+    && call.request.prompt.includes('member-a')))
+  assert.ok(schedule.creates.every(call => call.signal !== caller.signal && !call.signal.aborted))
+  await panel('flow_start')
+  assert.equal(schedule.creates.length, 2)
+  const firstRun = JSON.parse((await panel('flow_run', { key: 'explicit-again' })).text)
+  assert.equal(firstRun.ok, true)
+  await panel('flow_run', { key: 'explicit-again' })
+  assert.equal(schedule.creates.length, 3)
+  const paused = JSON.parse((await panel('flow_pause')).text)
+  assert.equal(paused.ok, true)
+  assert.ok(!paused.value.schedules.some(row => row.role === 'recurring' && row.status === 'active'))
+  await provider.dispose()
+  assert.equal(JSON.parse((await panel('flow_status')).text).value.code, 'service_missing')
+  await install({ name: 'wiring-schedule-replacement', apply(scope) { scope.provide('schedule', schedule) } })
+  assert.equal(JSON.parse((await panel('flow_status')).text).value.catalogVerified, true)
+  assert.equal(schedule.creates.length, 3, 'Replacing a provider must not trigger first work again')
+  assert.ok(events.filter(event => event.type === 'command/run').every(event => !Object.hasOwn(event.data, 'args')))
+  await fiber.dispose()
+  assert.equal(caller.signal.aborted, false)
+})
+
+test('team wiring: manual cadence and disabled evolution reach the flow without requiring Legion credentials', async t => {
+  const plugin = await loadPlugin()
+  const { ctx, install } = await host(t, { commands: true })
+  const schedule = wiringSchedule()
+  await install({ name: 'manual-schedule-provider', apply(scope) { scope.provide('schedule', schedule) } })
+  assert.equal(process.env[isolatedConfig.tokenEnv], undefined)
+  await install(plugin, { ...isolatedConfig, teamProfile: { evolutionEnabled: false, cadence: 'manual' } })
+  const agent = { id: 'manual-team-session', ctx, session: { append() { return 1 } } }
+  const result = await ctx.commands.execute(agent, '/legion-panel {"action":"flow_start"}', [], new AbortController().signal)
+  const body = JSON.parse(result.result.text)
+  assert.equal(body.ok, true)
+  assert.equal(body.value.partial, false)
+  assert.equal(body.value.schedules.length, 1)
+  assert.match(schedule.creates[0].request.prompt, /用户已关闭自主改进/)
+  assert.equal(schedule.creates[0].request.every_seconds, undefined)
+})
+
+test('team wiring: unload aborts pending flow reads and stale commands without cancelling the caller or remote work', async t => {
+  const plugin = await loadPlugin()
+  const { ctx, install } = await host(t, { commands: true })
+  const entered = Promise.withResolvers()
+  const release = Promise.withResolvers()
+  t.after(() => release.resolve([]))
+  await install({ name: 'held-schedule-provider', apply(scope) {
+    scope.provide('schedule', { async catalog() { entered.resolve(); return release.promise } })
+  } })
+  const fiber = await install(plugin, { ...isolatedConfig, teamProfile: {} })
+  const caller = new AbortController()
+  const agent = { id: 'held-flow-session', ctx }
+  const handler = ctx.commands.find(agent, 'legion-panel').handler
+  const input = { agent, signal: caller.signal, rawInput: '{"action":"flow_status"}', attachments: [] }
+  const pending = handler(input)
+  await Promise.race([entered.promise, pending.then(() => assert.fail('Flow read must enter the native catalog'))])
+  await fiber.dispose()
+  const result = JSON.parse((await pending).text)
+  assert.equal(result.ok, true)
+  assert.equal(result.value.cancelled, true)
+  assert.equal(result.value.execution, 'not_verified')
+  assert.equal(caller.signal.aborted, false)
+  release.resolve([])
+  const stale = JSON.parse((await handler(input)).text)
+  assert.equal(stale.ok, false)
+  assert.match(stale.error, /取消/)
 })

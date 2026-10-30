@@ -7,6 +7,8 @@ import { capabilityContext } from './lib/ecosystem.js'
 import { registerEcosystem } from './lib/extension.js'
 import { credentialFilePath } from './lib/credentials.js'
 import { executeWorkbenchCommand } from './lib/workbench.js'
+import { validateTeamProfile } from './lib/team.js'
+import { createTeamFlow } from './lib/team-flow.js'
 
 export const name = 'legion'
 export const inject = ['tools']
@@ -24,11 +26,32 @@ function validateBaseUrl(value) {
   return value
 }
 
+// Declaration-only fields for native Settings. The host validator below reads
+// raw user data first, before Schemastery can omit nulls or echo invalid values.
+const teamDefaults = validateTeamProfile({})
+const teamProfileForm = Schema.object({
+  name: Schema.string().pattern(/\S/).max(80).default(teamDefaults.name).description('战队名称。'),
+  goal: Schema.string().pattern(/\S/).max(4000).role('textarea').default(teamDefaults.goal)
+    .description('长期目标；仅作为用户上下文，不替换当前任务或扩大权限。'),
+  collaboration: Schema.union(['auto', 'leader', 'custom']).default(teamDefaults.collaboration)
+    .description('自主组织、指定带队者，或按用户要求协作。'),
+  leader: Schema.string().max(100).default(teamDefaults.leader)
+    .description('指定带队者时必填，且须属于 candidateHarnesses。'),
+  instructions: Schema.string().max(2000).role('textarea').default(teamDefaults.instructions)
+    .description('用户的协作要求；自定义协作时必填。'),
+  evolutionEnabled: Schema.boolean().default(teamDefaults.evolutionEnabled)
+    .description('是否允许在既有权限内按真实工作需求持续改进；不代表已执行或已验证效果。'),
+  cadence: Schema.union(['weekly', 'daily', 'manual']).default(teamDefaults.cadence)
+    .description('原生战队流程的发现频率：每周、每日或仅手动。'),
+})
+
 const fields = {
   baseUrl: Schema.transform(Schema.string(), validateBaseUrl, true)
     .description('Legion 服务地址；省略时使用 LEGION_BASE_URL，未设置时使用 http://127.0.0.1:8000。保存配置会重载军团插件并中止本地在途请求，不取消远端任务。'),
   candidateHarnesses: Schema.transform(Schema.array(Schema.string()), validateCandidateHarnesses, true)
     .description('可选的用户指定成员候选，按原顺序传给服务；省略或空列表不发送 plan。不由模型参数提供，不增加权限或兜底。'),
+  teamProfile: Schema.transform(Schema.any(), validateTeamProfile, true)
+    .description('可选的用户战队配置；省略保留旧行为。组队向导保存后通过原生工作台启动，读取配置或加载插件本身不派单。'),
   tokenEnv: Schema.string().pattern(/^[A-Za-z_][A-Za-z0-9_]*$/).default('LEGION_PERSONAL_TOKEN')
     .description('保存个人令牌的环境变量名；不填写令牌本身。'),
   tokenFile: Schema.transform(Schema.string(), credentialFilePath, true)
@@ -61,6 +84,7 @@ const knownFields = Schema.transform(Schema.any(), value => {
   }
   // Validate before Schemastery can normalize an explicit null to "omitted".
   if (Object.hasOwn(value, 'candidateHarnesses')) validateCandidateHarnesses(value.candidateHarnesses)
+  if (Object.hasOwn(value, 'teamProfile')) validateTeamProfile(value.teamProfile)
   if (Object.hasOwn(value, 'tokenFile')) credentialFilePath(value.tokenFile)
   return {}
 }, true).hidden()
@@ -74,7 +98,7 @@ export const Config = Schema.intersect([knownFields, Schema.object(fields)]).def
 // form, not executable host callbacks. Config / ~standard validation stays
 // intact: ConfigEditor still validates every raw write before persisting it.
 const form = Schema.object(Object.fromEntries(Object.entries(fields).map(([key, node]) => {
-  const field = new Schema(node.type === 'transform' ? node.inner : node)
+  const field = new Schema(key === 'teamProfile' ? teamProfileForm : node.type === 'transform' ? node.inner : node)
   field.meta = { ...field.meta, ...node.meta }
   if (node.type === 'transform' && !Object.hasOwn(node.meta, 'default')) delete field.meta.default
   return [key, field]
@@ -148,6 +172,12 @@ export function apply(ctx, liveConfig) {
   const config = liveConfig.get()
   const lifecycle = new AbortController()
   const client = new LegionClient({ ...config, lifecycleSignal: lifecycle.signal })
+  const flow = createTeamFlow({
+    getSchedule: () => ctx.get('schedule'),
+    profile: config.teamProfile,
+    candidates: config.candidateHarnesses,
+    lifecycleSignal: lifecycle.signal,
+  })
   const dispose = () => {
     if (lifecycle.signal.aborted) return
     lifecycle.abort(new DOMException('Legion plugin unloaded; remote tasks were not cancelled', 'AbortError'))
@@ -210,7 +240,7 @@ export function apply(ctx, liveConfig) {
         ...invocation,
         // Public reads bypass LegionClient but still belong to this plugin lifetime.
         signal: AbortSignal.any([invocation.signal, lifecycle.signal]),
-      }),
+      }, flow),
     })
   })
 }

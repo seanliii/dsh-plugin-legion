@@ -1,7 +1,7 @@
 {
   "name": "dsh-plugin-legion",
-  "version": "0.4.2",
-  "description": "An open-source capability and collaboration layer for DeepSeek Harness, connected to your independently installed Legion core.",
+  "version": "0.5.0",
+  "description": "A co-evolving harness team for DeepSeek Harness: set up companions once, then use native schedules for discovery, collaboration and improvement.",
   "type": "module",
   "main": "index.js",
   "exports": {
@@ -28,11 +28,12 @@
     "docs/SECURITY.md",
     "docs/MARKET.md",
     "docs/ECOSYSTEM.md",
+    "docs/TEAM.md",
     "docs/CORE.md"
   ],
   "scripts": {
     "test": "node --test test/*.test.js",
-    "check": "node --check index.js && node --check client/index.js && node --check lib/client.js && node --check lib/credentials.js && node --check lib/store.js && node --check lib/sse.js && node --check lib/commands.js && node --check lib/json.js && node --check lib/redaction.js && node --check lib/ecosystem.js && node --check lib/extension.js && node --check lib/sources.js && node --check lib/bundles.js && node --check lib/bridge.js && node --check lib/workbench.js"
+    "check": "node --check index.js && node --check client/index.js && node --check lib/client.js && node --check lib/credentials.js && node --check lib/store.js && node --check lib/sse.js && node --check lib/commands.js && node --check lib/json.js && node --check lib/redaction.js && node --check lib/ecosystem.js && node --check lib/extension.js && node --check lib/sources.js && node --check lib/bundles.js && node --check lib/bridge.js && node --check lib/workbench.js && node --check lib/team.js && node --check lib/team-flow.js"
   },
   "engines": {
     "node": ">=24.9.0",
@@ -63,6 +64,7 @@
     "@deepseek-ai/dsh-client-ui-sidebar": "0.2.1-rc.2",
     "@deepseek-ai/dsh-llm": "0.2.1-rc.2",
     "@deepseek-ai/dsh-plugin-manager": "0.2.1-rc.2",
+    "@deepseek-ai/dsh-schedule": "0.2.1-rc.2",
     "@deepseek-ai/dsh-tools": "0.2.1-rc.2",
     "@deepseek-ai/schemastery": "~3.18.5"
   },

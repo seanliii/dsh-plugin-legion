@@ -12,3 +12,10 @@ test('direct official runtime imports are declared for strict package managers',
     assert.equal(lock.packages[''].devDependencies[name], manifest.devDependencies[name])
   }
 })
+
+test('native scheduler acceptance uses an explicitly declared development dependency', async () => {
+  const manifest = JSON.parse(await readFile(new URL('../package.json', import.meta.url), 'utf8'))
+  const lock = JSON.parse(await readFile(new URL('../package-lock.json', import.meta.url), 'utf8'))
+  assert.equal(manifest.devDependencies['@deepseek-ai/dsh-schedule'], manifest.engines.dsh)
+  assert.equal(lock.packages[''].devDependencies['@deepseek-ai/dsh-schedule'], manifest.engines.dsh)
+})
